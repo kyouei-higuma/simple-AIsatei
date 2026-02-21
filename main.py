@@ -777,38 +777,45 @@ def _format_date_for_display(val: Any) -> str:
 
 
 def build_price_trend_chart(csv_features: List[Dict]) -> Optional[Any]:
-    """価格推移グラフを生成（PDF・Web両対応版）"""
+    """価格推移グラフを生成（PDF・Web両対応/Matplotlib版）"""
     rows = []
     for f in csv_features:
         p = f.get("properties", {})
         total = parse_numeric(p.get("u_transaction_price_total_ja"))
         area = parse_numeric(p.get("u_area_ja")) or parse_numeric(p.get("u_building_total_floor_area_ja"))
-        if not total or not area or area <= 0: continue
-        dt = _parse_date_ymd(p.get("point_in_time_name_ja") or p.get("成約年月日") or "")
-        if dt: rows.append({"dt": dt, "unit_price": total / area})
+        if not total or not area or area <= 0:
+            continue
+        date_str = p.get("point_in_time_name_ja") or p.get("成約年月日") or ""
+        dt = _parse_date_ymd(date_str)
+        if dt:
+            rows.append({"dt": dt, "unit_price": total / area})
     
-    if not rows: return None
+    if not rows:
+        return None
     df = pd.DataFrame(rows).sort_values("dt")
 
     import matplotlib.pyplot as plt
     from matplotlib import font_manager
-    fig, ax = plt.subplots(figsize=(8, 4))
+    # グラフサイズの設定
+    fig, ax = plt.subplots(figsize=(10, 5))
     
-    # フォント設定
+    # フォント設定（GitHubに上げたフォントを使用）
     font_path = Path(__file__).resolve().parent / "ipaexg.ttf"
     if font_path.exists():
         fp = font_manager.FontProperties(fname=str(font_path))
         plt.rcParams['font.family'] = fp.get_name()
-        ax.set_title("周辺の価格推移（過去3年間）", fontproperties=fp)
+        # 各種ラベルにフォントを適用
+        ax.set_title("周辺の価格推移（過去3年間）", fontproperties=fp, fontsize=14)
         ax.set_xlabel("成約日", fontproperties=fp)
         ax.set_ylabel("㎡単価（円/㎡）", fontproperties=fp)
-
-    ax.scatter(df["dt"], df["unit_price"], color="#3498db", alpha=0.6)
+    
+    # プロット（散布図）
+    ax.scatter(df["dt"], df["unit_price"], color="#3498db", alpha=0.6, s=50)
     ax.grid(True, alpha=0.3)
-    plt.xticks(rotation=45)
+    plt.xticks(rotation=30)
+    plt.tight_layout()
+    
     return fig
-    except ImportError:
-        return None
 
 
 def get_price_trend_analysis(csv_features: List[Dict]) -> Optional[str]:
@@ -1020,17 +1027,18 @@ def build_map_dataframe(
 
 
 def _plotly_fig_to_png(fig: Any) -> Optional[bytes]:
-    """FigureをPNG画像のバイト列に変換"""
-    if fig is None: return None
+    """FigureをPNG画像のバイト列に変換（Matplotlib対応版）"""
+    if fig is None:
+        return None
     import io
     import matplotlib.pyplot as plt
     try:
         buf = io.BytesIO()
-        # figがMatplotlibのFigureの場合
+        # figがMatplotlibのFigureオブジェクトか確認して保存
         if hasattr(fig, "savefig"):
             fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
         else:
-            # Plotlyの場合（念のため残す）
+            # 念のため古いPlotly形式も対応させておく
             buf.write(fig.to_image(format="png", scale=2))
         buf.seek(0)
         return buf.read()
