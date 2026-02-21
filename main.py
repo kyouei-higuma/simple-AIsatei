@@ -777,58 +777,36 @@ def _format_date_for_display(val: Any) -> str:
 
 
 def build_price_trend_chart(csv_features: List[Dict]) -> Optional[Any]:
-    """
-    価格推移グラフを生成（plotly.express使用）。
-    横軸: 成約日、縦軸: ㎡単価、トレンドライン付き。
-    """
+    """価格推移グラフを生成（PDF・Web両対応版）"""
     rows = []
     for f in csv_features:
         p = f.get("properties", {})
         total = parse_numeric(p.get("u_transaction_price_total_ja"))
-        land_a = parse_numeric(p.get("土地面積_数値"))
-        bldg_a = parse_numeric(p.get("建物面積_数値"))
-        excl_a = parse_numeric(p.get("専有面積_数値"))
-        area = excl_a if excl_a and excl_a > 0 else ((land_a or 0) + (bldg_a or 0)) or land_a or bldg_a
-        if not total or not area or area <= 0:
-            continue
-        date_str = p.get("point_in_time_name_ja") or p.get("成約年月日") or ""
-        dt = _parse_date_ymd(date_str)
-        if dt is None:
-            continue
-        unit_price = total / area
-        addr = p.get("district_name_ja") or p.get("所在地") or "-"
-        rows.append({
-            "contract_date": dt,
-            "unit_price_m2": unit_price,
-            "price": total,
-            "address": addr,
-        })
-    if not rows:
-        return None
-    try:
-        import plotly.express as px
-        df = pd.DataFrame(rows)
-        if df.empty:
-            return None
-        df["contract_date"] = pd.to_datetime(df["contract_date"])
-        scatter_opts = {
-            "x": "contract_date",
-            "y": "unit_price_m2",
-            "trendline": "ols" if len(df) >= 2 else None,
-            "title": "周辺の価格推移（過去3年間）",
-            "labels": {"contract_date": "成約日", "unit_price_m2": "㎡単価（円/㎡）"},
-        }
-        if len(df) >= 2:
-            scatter_opts["trendline_color_override"] = "#e74c3c"
-        fig = px.scatter(df, **scatter_opts)
-        fig.data[0].customdata = np.column_stack((df["price"], df["address"]))
-        fig.data[0].hovertemplate = "<b>%{customdata[1]}</b><br>価格: %{customdata[0]:,.0f}円<br>㎡単価: %{y:,.0f}円/㎡<extra></extra>"
-        fig.update_layout(
-            height=400,
-            margin=dict(l=60, r=40, t=50, b=60),
-            font=dict(size=12), # 日本語フォント指定を外すと、サーバー標準が使われやすくなります
-        )
-        return fig
+        area = parse_numeric(p.get("u_area_ja")) or parse_numeric(p.get("u_building_total_floor_area_ja"))
+        if not total or not area or area <= 0: continue
+        dt = _parse_date_ymd(p.get("point_in_time_name_ja") or p.get("成約年月日") or "")
+        if dt: rows.append({"dt": dt, "unit_price": total / area})
+    
+    if not rows: return None
+    df = pd.DataFrame(rows).sort_values("dt")
+
+    import matplotlib.pyplot as plt
+    from matplotlib import font_manager
+    fig, ax = plt.subplots(figsize=(8, 4))
+    
+    # フォント設定
+    font_path = Path(__file__).resolve().parent / "ipaexg.ttf"
+    if font_path.exists():
+        fp = font_manager.FontProperties(fname=str(font_path))
+        plt.rcParams['font.family'] = fp.get_name()
+        ax.set_title("周辺の価格推移（過去3年間）", fontproperties=fp)
+        ax.set_xlabel("成約日", fontproperties=fp)
+        ax.set_ylabel("㎡単価（円/㎡）", fontproperties=fp)
+
+    ax.scatter(df["dt"], df["unit_price"], color="#3498db", alpha=0.6)
+    ax.grid(True, alpha=0.3)
+    plt.xticks(rotation=45)
+    return fig
     except ImportError:
         return None
 
@@ -1042,12 +1020,20 @@ def build_map_dataframe(
 
 
 def _plotly_fig_to_png(fig: Any) -> Optional[bytes]:
-    """PlotlyのfigureをPNG画像のバイト列に変換（kaleido使用）"""
-    if fig is None:
-        return None
+    """FigureをPNG画像のバイト列に変換"""
+    if fig is None: return None
+    import io
+    import matplotlib.pyplot as plt
     try:
-        buf = fig.to_image(format="png", scale=2)
-        return buf
+        buf = io.BytesIO()
+        # figがMatplotlibのFigureの場合
+        if hasattr(fig, "savefig"):
+            fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+        else:
+            # Plotlyの場合（念のため残す）
+            buf.write(fig.to_image(format="png", scale=2))
+        buf.seek(0)
+        return buf.read()
     except Exception:
         return None
 
