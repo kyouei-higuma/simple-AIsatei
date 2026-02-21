@@ -777,44 +777,49 @@ def _format_date_for_display(val: Any) -> str:
 
 
 def build_price_trend_chart(csv_features: List[Dict]) -> Optional[Any]:
-    """価格推移グラフを生成（PDF・Web両対応/Matplotlib版）"""
+    """価格推移グラフを生成（赤いトレンドライン復活版）"""
     rows = []
     for f in csv_features:
         p = f.get("properties", {})
         total = parse_numeric(p.get("u_transaction_price_total_ja"))
         area = parse_numeric(p.get("u_area_ja")) or parse_numeric(p.get("u_building_total_floor_area_ja"))
-        if not total or not area or area <= 0:
-            continue
-        date_str = p.get("point_in_time_name_ja") or p.get("成約年月日") or ""
-        dt = _parse_date_ymd(date_str)
-        if dt:
-            rows.append({"dt": dt, "unit_price": total / area})
+        if not total or not area or area <= 0: continue
+        dt = _parse_date_ymd(p.get("point_in_time_name_ja") or p.get("成約年月日") or "")
+        if dt: rows.append({"dt": dt, "unit_price": total / area})
     
-    if not rows:
-        return None
+    if not rows: return None
     df = pd.DataFrame(rows).sort_values("dt")
 
     import matplotlib.pyplot as plt
     from matplotlib import font_manager
-    # グラフサイズの設定
+    import numpy as np
+    
     fig, ax = plt.subplots(figsize=(10, 5))
     
-    # フォント設定（GitHubに上げたフォントを使用）
+    # フォント設定
     font_path = Path(__file__).resolve().parent / "ipaexg.ttf"
     if font_path.exists():
         fp = font_manager.FontProperties(fname=str(font_path))
         plt.rcParams['font.family'] = fp.get_name()
-        # 各種ラベルにフォントを適用
         ax.set_title("周辺の価格推移（過去3年間）", fontproperties=fp, fontsize=14)
         ax.set_xlabel("成約日", fontproperties=fp)
         ax.set_ylabel("㎡単価（円/㎡）", fontproperties=fp)
-    
-    # プロット（散布図）
-    ax.scatter(df["dt"], df["unit_price"], color="#3498db", alpha=0.6, s=50)
+
+    # 散布図（青い点）
+    ax.scatter(df["dt"], df["unit_price"], color="#3498db", alpha=0.5, s=60, label="成約事例")
+
+    # --- 修正：赤いトレンドラインを計算して引く ---
+    if len(df) >= 2:
+        # 日付を数値（シリアル値）に変換して計算
+        x_numeric = df["dt"].map(datetime.toordinal)
+        z = np.polyfit(x_numeric, df["unit_price"], 1) # 1次関数（直線）で近似
+        p = np.poly1d(z)
+        ax.plot(df["dt"], p(x_numeric), "r-", linewidth=2, label="トレンドライン")
+    # ------------------------------------------
+
     ax.grid(True, alpha=0.3)
     plt.xticks(rotation=30)
     plt.tight_layout()
-    
     return fig
 
 
