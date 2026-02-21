@@ -1054,30 +1054,31 @@ def _plotly_fig_to_png(fig: Any) -> Optional[bytes]:
 
 def _get_reportlab_japanese_font() -> str:
     """ReportLab用の日本語フォントを登録し、フォント名を返す"""
-    import platform
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
-    font_paths = []
-    if platform.system() == "Windows":
-        font_paths = [
-            Path("C:/Windows/Fonts/meiryo.ttf"),
-            Path("C:/Windows/Fonts/msgothic.ttc"),
-            Path("C:/Windows/Fonts/yuigothr.ttf"),
-        ]
-    else:
-        font_paths = [
-            Path("/System/Library/Fonts/ヒラギノ角ゴシック W4.ttc"),
-            Path("/System/Library/Fonts/Supplemental/Arial Unicode.ttf"),
-            Path("/usr/share/fonts/truetype/fonts-japanese-gothic.ttf"),
-        ]
+    
+    # --- 修正：GitHubにアップロードした ipaexg.ttf を使う設定を追加 ---
+    font_file = Path(__file__).resolve().parent / "ipaexg.ttf"
+    
+    if font_file.exists():
+        try:
+            name = "JPFont"
+            pdfmetrics.registerFont(TTFont(name, str(font_file)))
+            return name
+        except Exception:
+            pass
+    # -----------------------------------------------------------
+    
+    # 以下の既存のフォント探し（Windows用など）は予備として残します
+    font_paths = [
+        Path("C:/Windows/Fonts/meiryo.ttf"),
+        Path("/usr/share/fonts/truetype/fonts-japanese-gothic.ttf"),
+    ]
     for fp in font_paths:
         if fp.exists():
             try:
                 name = "JPFont"
-                if fp.suffix.lower() == ".ttc":
-                    pdfmetrics.registerFont(TTFont(name, str(fp), subfontIndex=0))
-                else:
-                    pdfmetrics.registerFont(TTFont(name, str(fp)))
+                pdfmetrics.registerFont(TTFont(name, str(fp)))
                 return name
             except Exception:
                 continue
@@ -1092,6 +1093,15 @@ def _create_map_image(map_df: pd.DataFrame) -> Optional[bytes]:
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
+        
+        # --- 修正：matplotlib にも日本語フォントを教える ---
+        from matplotlib import font_manager
+        font_file = Path(__file__).resolve().parent / "ipaexg.ttf"
+        if font_file.exists():
+            font_prop = font_manager.FontProperties(fname=str(font_file))
+            plt.rcParams['font.family'] = font_prop.get_name()
+        # -----------------------------------------------
+
         fig, ax = plt.subplots(figsize=(6, 5))
         colors = {"検索住所": "#e74c3c", "取引事例": "#3498db"}
         for pt_type in map_df["type"].unique():
