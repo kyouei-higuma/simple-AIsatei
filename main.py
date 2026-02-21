@@ -823,10 +823,10 @@ def build_price_trend_chart(csv_features: List[Dict]) -> Optional[Any]:
         fig = px.scatter(df, **scatter_opts)
         fig.data[0].customdata = np.column_stack((df["price"], df["address"]))
         fig.data[0].hovertemplate = "<b>%{customdata[1]}</b><br>価格: %{customdata[0]:,.0f}円<br>㎡単価: %{y:,.0f}円/㎡<extra></extra>"
-        fig.update_layout(
+       fig.update_layout(
             height=400,
             margin=dict(l=60, r=40, t=50, b=60),
-            font=dict(family="Meiryo, Yu Gothic, MS Gothic, sans-serif", size=12),
+            font=dict(size=12), # 日本語フォント指定を外すと、サーバー標準が使われやすくなります
         )
         return fig
     except ImportError:
