@@ -754,12 +754,22 @@ def build_csv_reference_table(
 
 
 def compute_avg_unit_price(csv_features: List[Dict]) -> Tuple[Optional[float], int]:
-    """CSV事例から㎡単価の平均を算出。戻り値: (平均単価, 件数)"""
+    """
+    CSV事例から㎡単価の平均を算出。戻り値: (平均単価, 件数)
+    外れ値（周辺中央値の2倍以上）は計算から除外する。
+    """
     units = []
     for f in csv_features:
         up = get_unit_price(f)
         if up is not None and up > 0:
             units.append(up)
+    if not units:
+        return None, 0
+    arr = np.array(units)
+    median_val = np.median(arr)
+    if median_val is not None and median_val > 0:
+        threshold = median_val * 2.0
+        units = [u for u in units if u <= threshold]
     if not units:
         return None, 0
     return sum(units) / len(units), len(units)
@@ -824,7 +834,11 @@ def build_price_trend_chart(csv_features: List[Dict]) -> Optional[Any]:
 
 
 def get_price_trend_analysis(csv_features: List[Dict]) -> Optional[str]:
-    """直近1年と3年前の平均単価を比較し、分析コメントを生成"""
+    """
+    直近1年と3年前の中央値単価を比較し、分析コメントを生成。
+    外れ値の影響を抑えるため中央値（median）を使用し、
+    周辺中央値の2倍以上の異常に高いデータは計算から除外する。
+    """
     rows = []
     for f in csv_features:
         p = f.get("properties", {})
@@ -843,6 +857,13 @@ def get_price_trend_analysis(csv_features: List[Dict]) -> Optional[str]:
     if len(rows) < 2:
         return None
     df = pd.DataFrame(rows)
+    # 外れ値除外：周辺中央値の2倍以上のデータを計算から除外
+    overall_median = df["unit_price"].median()
+    if overall_median is not None and overall_median > 0:
+        threshold = overall_median * 2.0
+        df = df[df["unit_price"] <= threshold]
+    if len(df) < 2:
+        return None
     now = datetime.now()
     one_year_ago = datetime(now.year - 1, now.month, 1)
     two_years_ago = datetime(now.year - 2, now.month, 1)
@@ -851,13 +872,13 @@ def get_price_trend_analysis(csv_features: List[Dict]) -> Optional[str]:
     old = df[(df["dt"] >= three_years_ago) & (df["dt"] < two_years_ago)]["unit_price"]
     if len(recent) == 0 or len(old) == 0:
         return None
-    recent_avg = recent.mean()
-    old_avg = old.mean()
-    if old_avg <= 0:
+    recent_median = recent.median()
+    old_median = old.median()
+    if old_median is None or old_median <= 0:
         return None
-    pct = (recent_avg - old_avg) / old_avg * 100
+    pct = (recent_median - old_median) / old_median * 100
     direction = "上昇" if pct > 0 else "下落"
-    return f"直近1年間の平均単価は、3年前と比較して **{abs(pct):.1f}% {direction}** しています。"
+    return f"直近1年間の中央値単価は、3年前と比較して **{abs(pct):.1f}% {direction}** しています。（外れ値を除外し中央値で算出）"
 
 
 def _build_marker_tooltip_html(feature: Dict) -> str:
