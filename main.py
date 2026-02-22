@@ -185,10 +185,11 @@ def _parse_construction_date(cy_val: Any) -> Optional[datetime]:
 
 def _ensure_reins_data_3years() -> Path:
     """reins_data_3years.csv がなければ reins_data.csv から生成"""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     if CSV_PATH_3YEARS.exists():
         return CSV_PATH_3YEARS
     if not CSV_PATH_LEGACY.exists():
-        return CSV_PATH_LEGACY
+        return CSV_PATH_3YEARS
     import random
     random.seed(42)
     try:
@@ -206,6 +207,7 @@ def _ensure_reins_data_3years() -> Path:
         cy = datetime(dt.year - age, dt.month, 1)
         construction_years.append(f"{cy.year}/{cy.month:02d}")
     df["construction_year"] = construction_years
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     df.to_csv(CSV_PATH_3YEARS, index=False, encoding="utf-8")
     return CSV_PATH_3YEARS
 
@@ -1432,12 +1434,16 @@ if "csv_df" not in st.session_state:
     st.session_state.csv_df = pd.DataFrame()
 
 # 起動時にCSVを読み込み（latitude/longitude があれば座標計算スキップ）
-csv_path = _ensure_reins_data_3years()
-csv_mtime = csv_path.stat().st_mtime if csv_path.exists() else 0.0
-with st.spinner("3年分のデータを解析中...（初回のみ時間がかかります）"):
-    cases, csv_df = load_data(str(csv_path), csv_mtime)
-    st.session_state.csv_cases = cases
-    st.session_state.csv_df = csv_df
+try:
+    csv_path = _ensure_reins_data_3years()
+    csv_mtime = csv_path.stat().st_mtime if csv_path.exists() else 0.0
+    with st.spinner("3年分のデータを解析中...（初回のみ時間がかかります）"):
+        cases, csv_df = load_data(str(csv_path), csv_mtime)
+        st.session_state.csv_cases = cases
+        st.session_state.csv_df = csv_df
+except Exception:
+    st.session_state.csv_cases = []
+    st.session_state.csv_df = pd.DataFrame()
 
 with st.sidebar:
     st.markdown("### 📄 データソース")
