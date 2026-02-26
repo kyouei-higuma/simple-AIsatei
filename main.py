@@ -1304,15 +1304,11 @@ def _generate_valuation_pdf_impl(
         left_cell_contents.append(bd_table)
     kakuti_rate = kwargs.get("kakuti_rate", 0.0)
     corner_rate = get_corner_correction_rate(kwargs.get("corner_check", False))
-    road_rate = get_road_width_correction_rate(kwargs.get("road_width_input", 6.0))
-    frontage_rate = get_frontage_correction_rate(kwargs.get("frontage_input", 10.0))
     left_cell_contents.append(Spacer(1, 4))
     left_cell_contents.append(Paragraph("■ 画地補正の内訳", heading_style))
     kakuti_data = [
         ["項目", "適用率"],
         ["角地・準角地", f"{corner_rate*100:+.0f}%"],
-        ["道路幅員", f"{road_rate*100:+.0f}%"],
-        ["接道幅（間口）", f"{frontage_rate*100:+.0f}%"],
         ["合計画地補正率", f"{kakuti_rate*100:+.0f}%"],
     ]
     kakuti_table = Table(kakuti_data, colWidths=[40*mm, 30*mm])
@@ -1571,22 +1567,6 @@ with col_left:
             value=False,
             help="ONの場合 +5%",
         )
-        road_width_input = st.number_input(
-            "道路幅員（m）",
-            min_value=0.0,
-            max_value=30.0,
-            value=6.0,
-            step=0.5,
-            help="4m未満:-10% / 4-6m:-5% / 6-8m:0% / 8m以上:+3%",
-        )
-        frontage_input = st.number_input(
-            "接道幅・間口（m）",
-            min_value=0.0,
-            max_value=50.0,
-            value=10.0,
-            step=0.5,
-            help="4m未満:-15% / 4-8m:-5% / 8-15m:0% / 15m以上:+5%",
-        )
 
         submitted = st.form_submit_button("査定を実行")
 
@@ -1655,8 +1635,6 @@ with col_right:
                             "exclusive_area_input": exclusive_area_input,
                             "building_age": building_age,
                             "corner_check": corner_check,
-                            "road_width_input": road_width_input,
-                            "frontage_input": frontage_input,
                         }
                     else:
                         avg_unit_price, csv_count = compute_avg_unit_price(csv_filtered)
@@ -1679,9 +1657,7 @@ with col_right:
                                 building_age_val = int(building_age) if building_age > 0 else None
                             building_age_correction = 1.0 if property_type == "土地" else get_building_age_correction_factor(building_age_val)
                             corner_rate = get_corner_correction_rate(corner_check)
-                            road_rate = get_road_width_correction_rate(road_width_input)
-                            frontage_rate = get_frontage_correction_rate(frontage_input)
-                            kakuti_rate = corner_rate + road_rate + frontage_rate
+                            kakuti_rate = corner_rate
                             result = compute_valuation(
                                 property_type, avg_unit_price, building_age_correction,
                                 land_area_input, building_area_input, exclusive_area_input,
@@ -1727,8 +1703,6 @@ with col_right:
                                     land_breakdown=land_breakdown if property_type == "中古住宅（戸建て）" else None,
                                     kakuti_rate=kakuti_rate,
                                     corner_check=corner_check,
-                                    road_width_input=road_width_input,
-                                    frontage_input=frontage_input,
                                 )
                             except Exception as e:
                                 st.warning(f"PDF生成中にエラーが発生しました: {e}")
@@ -1759,8 +1733,6 @@ with col_right:
                             st.markdown("**補正内訳（画地補正）**")
                             kakuti_rows = [
                                 ("角地・準角地", corner_rate, f"{corner_rate*100:+.0f}%"),
-                                ("道路幅員", road_rate, f"{road_rate*100:+.0f}%"),
-                                ("接道幅（間口）", frontage_rate, f"{frontage_rate*100:+.0f}%"),
                             ]
                             kakuti_df = pd.DataFrame(
                                 [(n, r) for n, _, r in kakuti_rows],
@@ -1834,8 +1806,6 @@ with col_right:
                                 "adjusted_unit_price": adjusted_unit_price,
                                 "kakuti_rate": kakuti_rate,
                                 "corner_check": corner_check,
-                                "road_width_input": road_width_input,
-                                "frontage_input": frontage_input,
                                 "land_area_input": land_area_input,
                                 "building_area_input": building_area_input,
                                 "exclusive_area_input": exclusive_area_input,
@@ -1871,8 +1841,6 @@ with col_right:
             excl_a = sr.get("exclusive_area_input", 0)
             kakuti_rate = sr.get("kakuti_rate", 0.0)
             corner_check = sr.get("corner_check", False)
-            road_width_input = sr.get("road_width_input", 6.0)
-            frontage_input = sr.get("frontage_input", 10.0)
             building_age = sr.get("building_age", 0)
 
             avg_unit_price, csv_count = compute_avg_unit_price(csv_filtered)
@@ -1931,8 +1899,6 @@ with col_right:
                         land_breakdown=land_breakdown if property_type == "中古住宅（戸建て）" else None,
                         kakuti_rate=kakuti_rate,
                         corner_check=corner_check,
-                        road_width_input=road_width_input,
-                        frontage_input=frontage_input,
                     )
                 except Exception as e:
                     st.warning(f"PDF生成中にエラーが発生しました: {e}")
@@ -1962,13 +1928,9 @@ with col_right:
 
                 if kakuti_rate != 0:
                     corner_rate = get_corner_correction_rate(corner_check)
-                    road_rate = get_road_width_correction_rate(road_width_input)
-                    frontage_rate = get_frontage_correction_rate(frontage_input)
                     st.markdown("**補正内訳（画地補正）**")
                     kakuti_rows = [
                         ("角地・準角地", f"{corner_rate*100:+.0f}%"),
-                        ("道路幅員", f"{road_rate*100:+.0f}%"),
-                        ("接道幅（間口）", f"{frontage_rate*100:+.0f}%"),
                     ]
                     kakuti_df = pd.DataFrame(kakuti_rows, columns=["項目", "補正率"])
                     st.dataframe(kakuti_df, use_container_width=True, hide_index=True)
