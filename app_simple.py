@@ -1560,14 +1560,17 @@ st.markdown("**住所**")
 st.caption("住所がわからない場合は「地図で選択」ボタンで地図から選べます")
 addr_col, map_col = st.columns([4, 1])
 with addr_col:
-    addr_val = st.session_state.pop("address_from_map", None) or st.session_state.get("address_input", "")
+    if st.session_state.get("address_from_map"):
+        st.session_state["address_value"] = st.session_state.pop("address_from_map")
+    if "address_value" not in st.session_state:
+        st.session_state["address_value"] = ""
     address = st.text_input(
         "住所",
-        value=addr_val if addr_val else "",
+        value=st.session_state["address_value"],
         placeholder="例: 北海道旭川市神居一条18丁目",
-        key="address_input",
         label_visibility="collapsed",
     )
+    st.session_state["address_value"] = address
 with map_col:
     map_btn = st.button("🗺️ 地図で選択", use_container_width=True)
 
