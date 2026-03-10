@@ -1560,8 +1560,10 @@ st.markdown("**住所**")
 st.caption("住所がわからない場合は「地図で選択」ボタンで地図から選べます")
 addr_col, map_col = st.columns([4, 1])
 with addr_col:
+    addr_val = st.session_state.pop("address_from_map", None) or st.session_state.get("address_input", "")
     address = st.text_input(
         "住所",
+        value=addr_val if addr_val else "",
         placeholder="例: 北海道旭川市神居一条18丁目",
         key="address_input",
         label_visibility="collapsed",
@@ -1589,7 +1591,6 @@ if st.session_state.get("show_map"):
                     addr = reverse_geocode(lat, lng)
                 if addr:
                     st.session_state["address_from_map"] = addr
-                    st.session_state["address_input"] = addr
                     st.session_state["show_map"] = False
                     st.success(f"住所を設定しました: {addr}")
                     st.rerun()
