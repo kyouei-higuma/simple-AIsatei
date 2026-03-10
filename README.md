@@ -56,6 +56,43 @@ streamlit run main.py
 
 ブラウザが自動で開き、アプリが表示されます。
 
+### 簡易AI査定版（HP用）
+
+弊社HPからのリンク用に、地図・周辺事例リストを非表示にした軽量版です。
+
+```bash
+streamlit run app_simple.py
+```
+
+- **main.py**: 本格版（地図・事例リストあり）
+- **app_simple.py**: 簡易版（査定結果・価格トレンドグラフのみ）
+
+### お客様情報の自動転送（app_simple.py）
+
+査定完了時、お客様情報（お名前・電話番号・メールアドレス）と査定結果をWebhookに自動送信できます。
+
+**設定方法：**
+
+1. **Streamlit Cloud** の場合：ダッシュボード → アプリ → Settings → Secrets に以下を追加
+   ```
+   WEBHOOK_URL = "https://あなたのWebhookのURL"
+   ```
+
+2. **ローカル** の場合：`.streamlit/secrets.toml` を作成
+   ```
+   WEBHOOK_URL = "https://あなたのWebhookのURL"
+   ```
+
+**Webhookの例：**
+- [Zapier](https://zapier.com/) → Gmail・Googleスプレッドシート・Slack などに転送
+- [Make](https://www.make.com/)（旧Integromat）→ 同上
+- Slack Incoming Webhook → チャンネルに通知
+- 自社APIエンドポイント
+
+送信されるJSONの形式は `.streamlit/secrets.toml.example` を参照してください。
+
+**Google Chat への送信**: 詳細な設定手順は [docs/Google_Chat_設定手順.md](docs/Google_Chat_設定手順.md) を参照してください。
+
 ## 機能
 
 - 住所入力フォームによる検索
