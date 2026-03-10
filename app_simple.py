@@ -183,6 +183,22 @@ def geocode_address(address: str) -> Optional[Tuple[float, float]]:
     return result
 
 
+@st.cache_data(ttl=86400)
+def reverse_geocode(lat: float, lon: float) -> Optional[str]:
+    """緯度・経度から住所を取得（逆ジオコーディング・Nominatim使用）"""
+    try:
+        from geopy.geocoders import Nominatim
+        from geopy.extra.rate_limiter import RateLimiter
+        geolocator = Nominatim(user_agent="real_estate_app")
+        reverse = RateLimiter(geolocator.reverse, min_delay_seconds=1)
+        location = reverse(f"{lat}, {lon}", language="ja")
+        if location and location.address:
+            return location.address
+    except Exception:
+        pass
+    return None
+
+
 def haversine_distance(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
     """2点間の距離（メートル）を Haversine 公式で計算"""
     R = 6371000
@@ -1539,11 +1555,51 @@ else:
     exclusive_area_input = st.number_input("専有面積（㎡）", min_value=1.0, max_value=500.0, value=50.0, step=0.1, key="exclusive_area_mansion")
     building_age = st.number_input("築年数（年）", min_value=0, max_value=100, value=0, step=1, key="building_age_input")
 
-with st.form("search_form"):
+# 住所入力（地図ボタンと連動するためフォーム外）
+st.markdown("**住所**")
+st.caption("住所がわからない場合は「地図で選択」ボタンで地図から選べます")
+addr_col, map_col = st.columns([4, 1])
+with addr_col:
     address = st.text_input(
         "住所",
         placeholder="例: 北海道旭川市神居一条18丁目",
+        key="address_input",
+        label_visibility="collapsed",
     )
+with map_col:
+    map_btn = st.button("🗺️ 地図で選択", use_container_width=True)
+
+if map_btn:
+    if "show_map" not in st.session_state or not st.session_state.get("show_map"):
+        st.session_state["show_map"] = True
+    st.rerun()
+
+if st.session_state.get("show_map"):
+    with st.expander("地図で住所を選択（地図をクリックすると住所が自動入力されます）", expanded=True):
+        import folium
+        from streamlit_folium import st_folium
+        m = folium.Map(location=[43.77, 142.36], zoom_start=12)
+        map_data = st_folium(m, height=400, key="address_map")
+        clicked = (map_data or {}).get("last_clicked")
+        if clicked:
+            lat = clicked.get("lat")
+            lng = clicked.get("lng")
+            if lat is not None and lng is not None:
+                with st.spinner("住所を取得しています..."):
+                    addr = reverse_geocode(lat, lng)
+                if addr:
+                    st.session_state["address_from_map"] = addr
+                    st.session_state["address_input"] = addr
+                    st.session_state["show_map"] = False
+                    st.success(f"住所を設定しました: {addr}")
+                    st.rerun()
+                else:
+                    st.warning("この位置の住所を取得できませんでした。別の場所をクリックしてください。")
+        if st.button("地図を閉じる"):
+            st.session_state["show_map"] = False
+            st.rerun()
+
+with st.form("search_form"):
     radius_km = st.slider(
         "検索半径（km）",
         0.5, 10.0, 2.0, 0.5,
