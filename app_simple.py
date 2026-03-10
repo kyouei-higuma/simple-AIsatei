@@ -743,7 +743,7 @@ def get_depreciation_advice(building_age: Optional[int], property_type: str) -> 
     if property_type != "中古住宅（戸建て）" or building_age is None:
         return None
     if building_age >= 30:
-        return "⚠️ 築30年以上の建物は、法定耐用年数を超過している場合が多く、建物の価値はほぼゼロに近いと考えられます。"
+        return "⚠️ 築30年以上の建物は、法定耐用年数を超過している場合が多く、建物の価値はほぼゼロに近いと考えられますが、リフォーム等により建物評価額が変わる可能性があります。"
     elif building_age >= 20:
         return "📌 築20年以上の建物は減価が進んでおり、建物価値は比較的低めに見積もられます。"
     elif building_age >= 10:
@@ -1512,48 +1512,38 @@ property_type = st.radio(
     key="property_type_selector",
 )
 
+# 面積・築年数はフォーム外に配置（フォーム内だと初回送信で値が正しく取得されないため）
+if property_type == "土地":
+    land_unit = st.radio("土地面積の単位", ["㎡", "坪"], horizontal=True, key="land_unit_tochi")
+    if land_unit == "㎡":
+        land_area_input = st.number_input("土地面積（㎡）", min_value=1.0, max_value=10000.0, value=100.0, step=1.0, key="land_area_tochi_m2")
+    else:
+        land_tsubo = st.number_input("土地面積（坪）", min_value=0.5, max_value=3500.0, value=30.0, step=0.5, key="land_area_tochi_tsubo")
+        land_area_input = land_tsubo * M2_TO_TSUBO
+    building_area_input = 0.0
+    exclusive_area_input = 0.0
+    building_age = 0
+elif property_type == "中古住宅（戸建て）":
+    land_unit = st.radio("土地面積の単位", ["㎡", "坪"], horizontal=True, key="land_unit_house")
+    if land_unit == "㎡":
+        land_area_input = st.number_input("土地面積（㎡）", min_value=0.0, max_value=10000.0, value=100.0, step=1.0, key="land_area_house_m2")
+    else:
+        land_tsubo = st.number_input("土地面積（坪）", min_value=0.0, max_value=3500.0, value=30.0, step=0.5, key="land_area_house_tsubo")
+        land_area_input = land_tsubo * M2_TO_TSUBO
+    building_area_input = st.number_input("建物延床面積（㎡）", min_value=1.0, max_value=500.0, value=80.0, step=0.1, key="building_area_house")
+    exclusive_area_input = 0.0
+    building_age = st.number_input("築年数（年）", min_value=0, max_value=100, value=0, step=1, key="building_age_input")
+else:
+    land_area_input = 0.0
+    building_area_input = 0.0
+    exclusive_area_input = st.number_input("専有面積（㎡）", min_value=1.0, max_value=500.0, value=50.0, step=0.1, key="exclusive_area_mansion")
+    building_age = st.number_input("築年数（年）", min_value=0, max_value=100, value=0, step=1, key="building_age_input")
+
 with st.form("search_form"):
     address = st.text_input(
         "住所",
         placeholder="例: 北海道旭川市神居一条18丁目",
     )
-    if property_type == "土地":
-        land_unit = st.radio("土地面積の単位", ["㎡", "坪"], horizontal=True, key="land_unit_tochi")
-        if land_unit == "㎡":
-            land_val = st.number_input("土地面積（㎡）", min_value=1.0, max_value=10000.0, value=100.0, step=1.0, key="land_area_tochi_m2")
-            land_area_input = st.session_state.get("land_area_tochi_m2", land_val)
-        else:
-            land_tsubo = st.number_input("土地面積（坪）", min_value=0.5, max_value=3500.0, value=30.0, step=0.5, key="land_area_tochi_tsubo")
-            land_area_input = st.session_state.get("land_area_tochi_tsubo", land_tsubo) * M2_TO_TSUBO
-        building_area_input = 0.0
-        exclusive_area_input = 0.0
-    elif property_type == "中古住宅（戸建て）":
-        land_unit = st.radio("土地面積の単位", ["㎡", "坪"], horizontal=True, key="land_unit_house")
-        if land_unit == "㎡":
-            land_val = st.number_input("土地面積（㎡）", min_value=0.0, max_value=10000.0, value=100.0, step=1.0, key="land_area_house_m2")
-            land_area_input = st.session_state.get("land_area_house_m2", land_val)
-        else:
-            land_tsubo = st.number_input("土地面積（坪）", min_value=0.0, max_value=3500.0, value=30.0, step=0.5, key="land_area_house_tsubo")
-            land_area_input = st.session_state.get("land_area_house_tsubo", land_tsubo) * M2_TO_TSUBO
-        building_area_input = st.number_input("建物延床面積（㎡）", min_value=1.0, max_value=500.0, value=80.0, step=0.1, key="building_area_house")
-        exclusive_area_input = 0.0
-    else:
-        land_area_input = 0.0
-        building_area_input = 0.0
-        exclusive_area_input = st.number_input("専有面積（㎡）", min_value=1.0, max_value=500.0, value=50.0, step=0.1, key="exclusive_area_mansion")
-
-    if property_type != "土地":
-        building_age = st.number_input(
-            "築年数（年）",
-            min_value=0,
-            max_value=100,
-            value=0,
-            step=1,
-            key="building_age_input",
-        )
-    else:
-        building_age = 0
-
     radius_km = st.slider(
         "検索半径（km）",
         0.5, 10.0, 2.0, 0.5,
@@ -1829,6 +1819,18 @@ if submitted:
                                 - ローカル: `.streamlit/secrets.toml` に `WEBHOOK_URL = "URL"` の形式で記載
                                 """)
 
+                        st.markdown("---")
+                        st.markdown(
+                            '<p style="text-align: center; font-size: 1rem; font-weight: bold; color: #1f77b4; '
+                            'background: linear-gradient(135deg, #f0f8ff 0%, #e6f3ff 100%); padding: 16px; '
+                            'border-radius: 8px; border-left: 4px solid #1f77b4;">'
+                            '📞 詳しくはお問い合わせください<br>'
+                            '<span style="font-size: 1.1rem;">株式会社　杏栄</span><br>'
+                            '旭川市永山2条19丁目4－1　TEL: 0166－48－2349'
+                            '</p>',
+                            unsafe_allow_html=True,
+                        )
+
                         st.session_state.search_result = {
                             "has_valuation": True,
                             "address": address,
@@ -2002,4 +2004,16 @@ elif st.session_state.search_result is not None:
                 trend_comment = get_price_trend_analysis(csv_filtered)
                 if trend_comment:
                     st.markdown(trend_comment)
+
+            st.markdown("---")
+            st.markdown(
+                '<p style="text-align: center; font-size: 1rem; font-weight: bold; color: #1f77b4; '
+                'background: linear-gradient(135deg, #f0f8ff 0%, #e6f3ff 100%); padding: 16px; '
+                'border-radius: 8px; border-left: 4px solid #1f77b4;">'
+                '📞 詳しくはお問い合わせください<br>'
+                '<span style="font-size: 1.1rem;">株式会社　杏栄</span><br>'
+                '旭川市永山2条19丁目4－1　TEL: 0166－48－2349'
+                '</p>',
+                unsafe_allow_html=True,
+            )
 
