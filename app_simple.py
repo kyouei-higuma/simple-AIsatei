@@ -1654,12 +1654,14 @@ if st.session_state.get("show_map"):
             st.rerun()
 
 with st.form("search_form"):
+    # 旭川市内なら半径2km、市外なら半径5kmをデフォルトに
+    default_radius = 2.0 if "旭川市" in (address or "") else 5.0
     radius_km = st.slider(
         "検索半径（km）",
-        0.5, 10.0, 2.0, 0.5,
+        0.5, 10.0, default_radius, 0.5,
     )
 
-    st.caption("過去3年の成約事例データを参考にしています。")
+    st.caption(f"半径{radius_km}㎞の、過去3年の成約事例データを参考にしています。")
 
     corner_check = st.checkbox("角地・準角地（+5%）", value=False)
 
@@ -1846,7 +1848,7 @@ if submitted:
                         with col4:
                             st.metric("参考取引件数", f"{csv_count} 件")
                         count_msg = f"{total_count}件中 {csv_count}件を表示中" if total_count != csv_count else f"{csv_count}件"
-                        st.caption(f"※ 近隣の過去3年分・{count_msg}のデータを参照しました。")
+                        st.caption(f"※ 半径{radius_km}㎞の、過去3年の成約事例データを参考にしています。（{count_msg}）")
                         if property_type == "土地" or (property_type == "中古住宅（戸建て）" and land_breakdown is not None):
                             st.caption("※ 成約ベースの価格から、㎡単価・坪単価に20%を上乗せしています。")
 
@@ -2105,7 +2107,7 @@ elif st.session_state.search_result is not None:
             with col4:
                 st.metric("参考取引件数", f"{csv_count} 件")
             count_msg = f"{total_count}件中 {csv_count}件を表示中" if total_count != csv_count else f"{csv_count}件"
-            st.caption(f"※ 半径{radius_km}km以内のCSVデータ {count_msg}を参照しました。（住所: {address}）")
+            st.caption(f"※ 半径{radius_km}㎞の、過去3年の成約事例データを参考にしています。（{count_msg}、住所: {address}）")
             if property_type == "土地" or (property_type == "中古住宅（戸建て）" and land_breakdown is not None):
                 st.caption("※ 成約ベースの価格から、㎡単価・坪単価に20%を上乗せしています。")
 
