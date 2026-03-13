@@ -33,6 +33,7 @@ st.set_page_config(
 # 定数
 MAX_REFERENCE_CASES = 20
 M2_TO_TSUBO = 3.30578  # 1坪 = 3.30578㎡（坪単価換算用）
+LAND_MARKUP_RATE = 1.20  # 土地単価の20%上乗せ（成約ベースの補正）
 
 # Webhook転送用（環境変数 WEBHOOK_URL または Streamlit Secrets で設定）
 def _get_webhook_url() -> Optional[str]:
@@ -585,6 +586,7 @@ def compute_valuation(
     kakuti_rate: float = 0.0,
     subject_building_age: Optional[int] = None,
     csv_features: Optional[List[Dict]] = None,
+    csv_features_2km: Optional[List[Dict]] = None,
 ) -> Tuple[float, Optional[float], Optional[float]]:
     """
     種別に応じた査定金額を算出。
@@ -592,11 +594,13 @@ def compute_valuation(
     戻り値: (査定額, 土地価格, 建物評価額)
     """
     if property_type == "土地":
-        land_val = land_area * avg_unit_price
+        avg_with_markup = avg_unit_price * LAND_MARKUP_RATE
+        land_val = land_area * avg_with_markup
         return land_val * (1.0 + kakuti_rate), land_val * (1.0 + kakuti_rate), None
     elif property_type == "中古住宅（戸建て）" and csv_features is not None:
         result = _compute_valuation_detached(
-            csv_features, land_area, subject_building_age, kakuti_rate
+            csv_features, land_area, subject_building_age, kakuti_rate,
+            csv_features_2km=csv_features_2km,
         )
         if result is not None:
             return result
@@ -613,15 +617,18 @@ def _compute_valuation_detached(
     land_area: float,
     subject_building_age: Optional[int],
     kakuti_rate: float,
+    csv_features_2km: Optional[List[Dict]] = None,
 ) -> Optional[Tuple[float, float, float]]:
     """
     中古戸建の査定：
-    ・築20年以下: 建物価値 = 1,500万円 × 残価率（20年でゼロ）
-    ・築25年以上: 建物価値 = 0円（古家付き土地）
-    ・最終査定額 = (近隣土地単価 × 土地面積 × 画地補正) + 建物評価額
+    ・昭和56年以前（築44年以上）: 建物評価0（リフォームされていても）
+    ・築35年以上: 建物基本評価0、リフォーム等で変動
+    ・築34年以下: 土地2km・売買価格差額で建物評価、土地20%上乗せ
     """
+    # 土地単価算出用データ（築25年以上＝土地価格のみの取引）
+    land_data = csv_features_2km if (csv_features_2km and subject_building_age is not None and subject_building_age <= 34) else csv_features
     land_prices = []
-    for f in csv_features:
+    for f in land_data:
         p = f.get("properties", {})
         total = parse_numeric(p.get("u_transaction_price_total_ja"))
         land_a = parse_numeric(p.get("土地面積_数値"))
@@ -634,7 +641,7 @@ def _compute_valuation_detached(
         else:
             land_prices.append(total / (land_a or 1))
     if not land_prices:
-        for f in csv_features:
+        for f in land_data:
             p = f.get("properties", {})
             total = parse_numeric(p.get("u_transaction_price_total_ja"))
             land_a = parse_numeric(p.get("土地面積_数値")) or parse_numeric(p.get("u_area_ja"))
@@ -643,11 +650,44 @@ def _compute_valuation_detached(
     if not land_prices:
         return None
     avg_land = sum(land_prices) / len(land_prices)
-    land_value = land_area * avg_land * (1.0 + kakuti_rate)
+    land_value_base = land_area * avg_land * (1.0 + kakuti_rate)
+
+    # 昭和56年以前（築44年以上）: 建物評価0
+    if subject_building_age is not None and subject_building_age >= 44:
+        return land_value_base * LAND_MARKUP_RATE, land_value_base * LAND_MARKUP_RATE, 0
+
+    # 築35年以上: 建物基本評価0
+    if subject_building_age is None or subject_building_age >= 35:
+        return land_value_base * LAND_MARKUP_RATE, land_value_base * LAND_MARKUP_RATE, 0
+
+    # 築34年以下: 売買価格-土地価格で建物評価の平均を算出、土地20%上乗せ
+    if csv_features_2km and subject_building_age is not None and subject_building_age <= 34:
+        building_values = []
+        for f in csv_features_2km:
+            p = f.get("properties", {})
+            total = parse_numeric(p.get("u_transaction_price_total_ja"))
+            land_a = parse_numeric(p.get("土地面積_数値")) or parse_numeric(p.get("u_area_ja"))
+            age = p.get("築年数_成約時")
+            age_f = float(age) if age is not None else 0
+            if not total or total <= 0 or not land_a or land_a <= 0:
+                continue
+            if age_f > 34:
+                continue
+            land_price_case = land_a * avg_land * (1.0 + kakuti_rate)
+            bldg_val = total - land_price_case
+            if bldg_val >= 0:
+                building_values.append(bldg_val)
+        if building_values:
+            avg_building = sum(building_values) / len(building_values)
+            land_value = land_value_base * LAND_MARKUP_RATE
+            return land_value + avg_building, land_value, avg_building
+
+    # フォールバック: 従来ロジック（築20年以下は残価率、築25年以上は0）
     if subject_building_age is None or subject_building_age >= 25:
-        return land_value + 0, land_value, 0
+        return land_value_base * LAND_MARKUP_RATE, land_value_base * LAND_MARKUP_RATE, 0
     residual = get_building_residual_rate_20y(float(subject_building_age))
     building_value = STANDARD_NEW_BUILDING_PRICE * residual
+    land_value = land_value_base * LAND_MARKUP_RATE
     return land_value + building_value, land_value, building_value
 
 
@@ -758,8 +798,10 @@ def get_depreciation_advice(building_age: Optional[int], property_type: str) -> 
     """戸建ての築年数に応じた減価修正アドバイス"""
     if property_type != "中古住宅（戸建て）" or building_age is None:
         return None
-    if building_age >= 30:
-        return "⚠️ 築30年以上の建物は、法定耐用年数を超過している場合が多く、建物の価値はほぼゼロに近いと考えられますが、リフォーム等により建物評価額が変わる可能性があります。"
+    if building_age >= 44:
+        return "⚠️ 昭和56年以前の建物は、評価は０（リフォームされていても）"
+    if building_age >= 35:
+        return "⚠️ 築35年以上の建物は、基本評価０だが、リフォーム等の状況により価格が変わる可能性があります。"
     elif building_age >= 20:
         return "📌 築20年以上の建物は減価が進んでおり、建物価値は比較的低めに見積もられますが、リフォーム等により建物評価額が変わる可能性があります。"
     elif building_age >= 10:
@@ -1715,12 +1757,17 @@ if submitted:
                         building_age_correction = 1.0 if property_type == "土地" else get_building_age_correction_factor(building_age_val)
                         corner_rate = get_corner_correction_rate(corner_check)
                         kakuti_rate = corner_rate
+                        csv_2km = None
+                        if property_type == "中古住宅（戸建て）" and building_age_val is not None and building_age_val <= 34:
+                            csv_2km_raw = filter_csv_by_distance(csv_raw, lat, lon, 2000, csv_df=csv_df)
+                            csv_2km = apply_case_filters(csv_2km_raw, filter_type, 0, 50, filter_contract_value)
                         result = compute_valuation(
                             property_type, avg_unit_price, building_age_correction,
                             land_area_input, building_area_input, exclusive_area_input,
                             kakuti_rate=kakuti_rate,
                             subject_building_age=building_age_val if property_type == "中古住宅（戸建て）" else None,
                             csv_features=csv_filtered if property_type == "中古住宅（戸建て）" else None,
+                            csv_features_2km=csv_2km,
                         )
                         valuation = result[0]
                         land_breakdown = result[1]
@@ -1775,19 +1822,23 @@ if submitted:
                             )
                         else:
                             st.info("PDFの生成に失敗しました。reportlab が正しくインストールされているか確認してください。")
+                        display_avg = (avg_unit_price * LAND_MARKUP_RATE) if property_type == "土地" else avg_unit_price
+                        display_adj = (adjusted_unit_price * LAND_MARKUP_RATE) if property_type == "土地" else adjusted_unit_price
                         col1, col2, col3, col4 = st.columns(4)
                         with col1:
-                            tsubo_avg = (avg_unit_price / 10000) * M2_TO_TSUBO
-                            st.metric("㎡単価の平均", f"{avg_unit_price/10000:,.1f} 万円/㎡", f"坪: {tsubo_avg:,.1f} 万円/坪")
+                            tsubo_avg = (display_avg / 10000) * M2_TO_TSUBO
+                            st.metric("㎡単価の平均", f"{display_avg/10000:,.1f} 万円/㎡", f"坪: {tsubo_avg:,.1f} 万円/坪")
                         with col2:
                             st.metric("築年数補正係数", f"{building_age_correction:.2f}")
                         with col3:
-                            tsubo_adj = (adjusted_unit_price / 10000) * M2_TO_TSUBO
-                            st.metric("補正後㎡単価", f"{adjusted_unit_price/10000:,.1f} 万円/㎡", f"坪: {tsubo_adj:,.1f} 万円/坪")
+                            tsubo_adj = (display_adj / 10000) * M2_TO_TSUBO
+                            st.metric("補正後㎡単価", f"{display_adj/10000:,.1f} 万円/㎡", f"坪: {tsubo_adj:,.1f} 万円/坪")
                         with col4:
                             st.metric("参考取引件数", f"{csv_count} 件")
                         count_msg = f"{total_count}件中 {csv_count}件を表示中" if total_count != csv_count else f"{csv_count}件"
                         st.caption(f"※ 近隣の過去3年分・{count_msg}のデータを参照しました。")
+                        if property_type == "土地":
+                            st.caption("※ 成約ベースのため、㎡単価・坪単価に20%を上乗せしています。")
 
                         st.markdown("**補正内訳（画地補正）**")
                         kakuti_rows = [
@@ -1801,7 +1852,7 @@ if submitted:
                         st.caption(f"合計画地補正率: {kakuti_rate*100:+.0f}%")
 
                         latex_f, detail_f = format_valuation_formula(
-                            property_type, valuation, avg_unit_price, building_age_correction,
+                            property_type, valuation, display_avg, building_age_correction,
                             land_area_input, building_area_input, exclusive_area_input,
                             kakuti_rate=kakuti_rate,
                             building_breakdown=building_breakdown if property_type == "中古住宅（戸建て）" else None,
@@ -1811,7 +1862,15 @@ if submitted:
                         st.caption(f"※ {detail_f}（参考値です）")
 
                         if property_type == "中古住宅（戸建て）" and land_breakdown is not None:
-                            suffix = "（築25年以上のため古家付き土地）" if (building_breakdown or 0) == 0 else f"（築{building_age_val or 0}年による減価後）"
+                            suffix = (
+                                "（昭和56年以前のため評価0・リフォームされていても）"
+                                if (building_breakdown or 0) == 0 and (building_age_val or 0) >= 44
+                                else "（基本評価0、リフォーム等の状況により価格が変わる）"
+                                if (building_breakdown or 0) == 0 and (building_age_val or 0) >= 35
+                                else "（築25年以上のため古家付き土地）"
+                                if (building_breakdown or 0) == 0
+                                else f"（築{building_age_val or 0}年による減価後）"
+                            )
                             st.markdown(
                                 f"**算出根拠**: 土地価格：{land_breakdown:,.0f}円 ＋ "
                                 f"建物評価：{building_breakdown or 0:,.0f}円{suffix}"
@@ -1859,8 +1918,8 @@ if submitted:
                             },
                             "査定結果": {
                                 "仮査定金額（万円）": round(valuation / 10000, 0),
-                                "㎡単価の平均（万円/㎡）": round(avg_unit_price / 10000, 1),
-                                "坪単価の平均（万円/坪）": round((avg_unit_price / 10000) * M2_TO_TSUBO, 1),
+                                "㎡単価の平均（万円/㎡）": round(display_avg / 10000, 1),
+                                "坪単価の平均（万円/坪）": round((display_avg / 10000) * M2_TO_TSUBO, 1),
                                 "築年数補正係数": building_age_correction,
                                 "参照事例数": csv_count,
                             },
@@ -1954,12 +2013,19 @@ elif st.session_state.search_result is not None:
             building_age_val = int(building_age) if building_age is not None and building_age > 0 else None
             correction = 1.0 if property_type == "土地" else get_building_age_correction_factor(building_age_val)
             adjusted_unit_price = avg_unit_price * correction
+            csv_2km_prev = None
+            if property_type == "中古住宅（戸建て）" and building_age_val is not None and building_age_val <= 34:
+                csv_raw_prev = st.session_state.get("csv_cases", [])
+                csv_df_prev = st.session_state.get("csv_df")
+                csv_2km_raw = filter_csv_by_distance(csv_raw_prev, lat, lon, 2000, csv_df=csv_df_prev)
+                csv_2km_prev = apply_case_filters(csv_2km_raw, filter_type, 0, 50, "all")
             result = compute_valuation(
                 property_type, avg_unit_price, correction,
                 land_a, bldg_a, excl_a,
                 kakuti_rate=kakuti_rate,
                 subject_building_age=building_age_val if property_type == "中古住宅（戸建て）" else None,
                 csv_features=csv_filtered if property_type == "中古住宅（戸建て）" else None,
+                csv_features_2km=csv_2km_prev,
             )
             valuation = result[0]
             land_breakdown = result[1]
@@ -2014,19 +2080,23 @@ elif st.session_state.search_result is not None:
                 )
             else:
                 st.info("PDFの生成に失敗しました。reportlab が正しくインストールされているか確認してください。")
+            display_avg_prev = (avg_unit_price * LAND_MARKUP_RATE) if property_type == "土地" else avg_unit_price
+            display_adj_prev = (adjusted_unit_price * LAND_MARKUP_RATE) if property_type == "土地" else adjusted_unit_price
             col1, col2, col3, col4 = st.columns(4)
             with col1:
-                tsubo_avg = (avg_unit_price / 10000) * M2_TO_TSUBO
-                st.metric("㎡単価の平均", f"{avg_unit_price/10000:,.1f} 万円/㎡", f"坪: {tsubo_avg:,.1f} 万円/坪")
+                tsubo_avg = (display_avg_prev / 10000) * M2_TO_TSUBO
+                st.metric("㎡単価の平均", f"{display_avg_prev/10000:,.1f} 万円/㎡", f"坪: {tsubo_avg:,.1f} 万円/坪")
             with col2:
                 st.metric("築年数補正係数", f"{correction:.2f}")
             with col3:
-                tsubo_adj = (adjusted_unit_price / 10000) * M2_TO_TSUBO
-                st.metric("補正後㎡単価", f"{adjusted_unit_price/10000:,.1f} 万円/㎡", f"坪: {tsubo_adj:,.1f} 万円/坪")
+                tsubo_adj = (display_adj_prev / 10000) * M2_TO_TSUBO
+                st.metric("補正後㎡単価", f"{display_adj_prev/10000:,.1f} 万円/㎡", f"坪: {tsubo_adj:,.1f} 万円/坪")
             with col4:
                 st.metric("参考取引件数", f"{csv_count} 件")
             count_msg = f"{total_count}件中 {csv_count}件を表示中" if total_count != csv_count else f"{csv_count}件"
             st.caption(f"※ 半径{radius_km}km以内のCSVデータ {count_msg}を参照しました。（住所: {address}）")
+            if property_type == "土地":
+                st.caption("※ 成約ベースのため、㎡単価・坪単価に20%を上乗せしています。")
 
             if kakuti_rate != 0:
                 corner_rate = get_corner_correction_rate(corner_check)
@@ -2039,7 +2109,7 @@ elif st.session_state.search_result is not None:
                 st.caption(f"合計画地補正率: {kakuti_rate*100:+.0f}%")
 
             latex_f, detail_f = format_valuation_formula(
-                property_type, valuation, avg_unit_price, correction,
+                property_type, valuation, display_avg_prev, correction,
                 land_a, bldg_a, excl_a,
                 kakuti_rate=kakuti_rate,
                 building_breakdown=building_breakdown if property_type == "中古住宅（戸建て）" else None,
@@ -2047,6 +2117,25 @@ elif st.session_state.search_result is not None:
             )
             st.markdown(f"**算出式**: ${latex_f}$")
             st.caption(f"※ {detail_f}（参考値です）")
+
+            if property_type == "中古住宅（戸建て）" and land_breakdown is not None:
+                suffix_prev = (
+                    "（昭和56年以前のため評価0・リフォームされていても）"
+                    if (building_breakdown or 0) == 0 and (building_age_val or 0) >= 44
+                    else "（基本評価0、リフォーム等の状況により価格が変わる）"
+                    if (building_breakdown or 0) == 0 and (building_age_val or 0) >= 35
+                    else "（築25年以上のため古家付き土地）"
+                    if (building_breakdown or 0) == 0
+                    else f"（築{building_age_val or 0}年による減価後）"
+                )
+                st.markdown(
+                    f"**算出根拠**: 土地価格：{land_breakdown:,.0f}円 ＋ "
+                    f"建物評価：{building_breakdown or 0:,.0f}円{suffix_prev}"
+                )
+            if property_type == "中古住宅（戸建て）":
+                advice = get_depreciation_advice(building_age_val, property_type)
+                if advice:
+                    st.warning(advice)
 
             st.subheader("📈 価格トレンドグラフ")
             if price_chart is not None:
