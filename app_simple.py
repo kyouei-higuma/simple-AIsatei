@@ -809,7 +809,7 @@ def get_depreciation_advice(building_age: Optional[int], property_type: str) -> 
     if building_age >= 44:
         return "⚠️ 昭和56年以前の建物は、評価は０（リフォームされていても）"
     if building_age >= 35:
-        return "⚠️ 築35年以上の建物は、基本評価０だが、リフォーム等の状況により価格が変わる可能性があります。"
+        return "⚠️ 築35年以上の建物は、基本的な評価は０円となりますが、リフォーム・リノベーション等により建物評価が変わる可能性があります。"
     elif building_age >= 20:
         return "📌 築20年以上の建物は減価が進んでおり、建物価値は比較的低めに見積もられますが、リフォーム等により建物評価額が変わる可能性があります。"
     elif building_age >= 10:
@@ -1877,7 +1877,7 @@ if submitted:
                             suffix = (
                                 "（昭和56年以前のため評価0・リフォームされていても）"
                                 if (building_breakdown or 0) == 0 and (building_age_val or 0) >= 44
-                                else "（基本評価0、リフォーム等の状況により価格が変わる）"
+                                else "（リフォーム等の状況により価格が変わる）"
                                 if (building_breakdown or 0) == 0 and (building_age_val or 0) >= 35
                                 else "（築25年以上のため古家付き土地）"
                                 if (building_breakdown or 0) == 0
@@ -2135,7 +2135,7 @@ elif st.session_state.search_result is not None:
                 suffix_prev = (
                     "（昭和56年以前のため評価0・リフォームされていても）"
                     if (building_breakdown or 0) == 0 and (building_age_val or 0) >= 44
-                    else "（基本評価0、リフォーム等の状況により価格が変わる）"
+                    else "（リフォーム等の状況により価格が変わる）"
                     if (building_breakdown or 0) == 0 and (building_age_val or 0) >= 35
                     else "（築25年以上のため古家付き土地）"
                     if (building_breakdown or 0) == 0
