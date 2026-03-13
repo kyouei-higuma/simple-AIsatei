@@ -601,6 +601,7 @@ def compute_valuation(
         result = _compute_valuation_detached(
             csv_features, land_area, subject_building_age, kakuti_rate,
             csv_features_2km=csv_features_2km,
+            avg_unit_price=avg_unit_price,
         )
         if result is not None:
             return result
@@ -618,12 +619,13 @@ def _compute_valuation_detached(
     subject_building_age: Optional[int],
     kakuti_rate: float,
     csv_features_2km: Optional[List[Dict]] = None,
+    avg_unit_price: Optional[float] = None,
 ) -> Optional[Tuple[float, float, float]]:
     """
     中古戸建の査定：
     ・昭和56年以前（築44年以上）: 建物評価0（リフォームされていても）
     ・築35年以上: 建物基本評価0、リフォーム等で変動
-    ・築34年以下: 土地2km・売買価格差額で建物評価、土地20%上乗せ
+    ・築34年以下: 土地2km・売買価格差額で建物評価、土地20%上乗せ（表示と一致するようavg_unit_priceベース）
     """
     # 土地単価算出用データ（築25年以上＝土地価格のみの取引）
     land_data = csv_features_2km if (csv_features_2km and subject_building_age is not None and subject_building_age <= 34) else csv_features
@@ -661,6 +663,7 @@ def _compute_valuation_detached(
         return land_value_base * LAND_MARKUP_RATE, land_value_base * LAND_MARKUP_RATE, 0
 
     # 築34年以下: 売買価格-土地価格で建物評価の平均を算出、土地20%上乗せ
+    # 土地価格は表示（補正後㎡単価）と一致するよう avg_unit_price ベースで算出（2倍にならないよう20%アップに統一）
     if csv_features_2km and subject_building_age is not None and subject_building_age <= 34:
         building_values = []
         for f in csv_features_2km:
@@ -679,7 +682,12 @@ def _compute_valuation_detached(
                 building_values.append(bldg_val)
         if building_values:
             avg_building = sum(building_values) / len(building_values)
-            land_value = land_value_base * LAND_MARKUP_RATE
+            # 土地価格は avg_unit_price ベースで20%上乗せ（表示と算出式が一致）
+            if avg_unit_price is not None and avg_unit_price > 0:
+                land_value_base_display = land_area * avg_unit_price * (1.0 + kakuti_rate)
+                land_value = land_value_base_display * LAND_MARKUP_RATE
+            else:
+                land_value = land_value_base * LAND_MARKUP_RATE
             return land_value + avg_building, land_value, avg_building
 
     # フォールバック: 従来ロジック（築20年以下は残価率、築25年以上は0）
@@ -1822,8 +1830,10 @@ if submitted:
                             )
                         else:
                             st.info("PDFの生成に失敗しました。reportlab が正しくインストールされているか確認してください。")
-                        display_avg = (avg_unit_price * LAND_MARKUP_RATE) if property_type == "土地" else avg_unit_price
-                        display_adj = (adjusted_unit_price * LAND_MARKUP_RATE) if property_type == "土地" else adjusted_unit_price
+                        # 土地・中古戸建（土地含む）は成約ベースから20%上乗せで表示
+                        _apply_markup = property_type == "土地" or (property_type == "中古住宅（戸建て）" and land_breakdown is not None)
+                        display_avg = (avg_unit_price * LAND_MARKUP_RATE) if _apply_markup else avg_unit_price
+                        display_adj = (adjusted_unit_price * LAND_MARKUP_RATE) if _apply_markup else adjusted_unit_price
                         col1, col2, col3, col4 = st.columns(4)
                         with col1:
                             tsubo_avg = (display_avg / 10000) * M2_TO_TSUBO
@@ -1837,8 +1847,8 @@ if submitted:
                             st.metric("参考取引件数", f"{csv_count} 件")
                         count_msg = f"{total_count}件中 {csv_count}件を表示中" if total_count != csv_count else f"{csv_count}件"
                         st.caption(f"※ 近隣の過去3年分・{count_msg}のデータを参照しました。")
-                        if property_type == "土地":
-                            st.caption("※ 成約ベースのため、㎡単価・坪単価に20%を上乗せしています。")
+                        if property_type == "土地" or (property_type == "中古住宅（戸建て）" and land_breakdown is not None):
+                            st.caption("※ 成約ベースの価格から、㎡単価・坪単価に20%を上乗せしています。")
 
                         st.markdown("**補正内訳（画地補正）**")
                         kakuti_rows = [
@@ -2080,8 +2090,9 @@ elif st.session_state.search_result is not None:
                 )
             else:
                 st.info("PDFの生成に失敗しました。reportlab が正しくインストールされているか確認してください。")
-            display_avg_prev = (avg_unit_price * LAND_MARKUP_RATE) if property_type == "土地" else avg_unit_price
-            display_adj_prev = (adjusted_unit_price * LAND_MARKUP_RATE) if property_type == "土地" else adjusted_unit_price
+            _apply_markup_prev = property_type == "土地" or (property_type == "中古住宅（戸建て）" and land_breakdown is not None)
+            display_avg_prev = (avg_unit_price * LAND_MARKUP_RATE) if _apply_markup_prev else avg_unit_price
+            display_adj_prev = (adjusted_unit_price * LAND_MARKUP_RATE) if _apply_markup_prev else adjusted_unit_price
             col1, col2, col3, col4 = st.columns(4)
             with col1:
                 tsubo_avg = (display_avg_prev / 10000) * M2_TO_TSUBO
@@ -2095,8 +2106,8 @@ elif st.session_state.search_result is not None:
                 st.metric("参考取引件数", f"{csv_count} 件")
             count_msg = f"{total_count}件中 {csv_count}件を表示中" if total_count != csv_count else f"{csv_count}件"
             st.caption(f"※ 半径{radius_km}km以内のCSVデータ {count_msg}を参照しました。（住所: {address}）")
-            if property_type == "土地":
-                st.caption("※ 成約ベースのため、㎡単価・坪単価に20%を上乗せしています。")
+            if property_type == "土地" or (property_type == "中古住宅（戸建て）" and land_breakdown is not None):
+                st.caption("※ 成約ベースの価格から、㎡単価・坪単価に20%を上乗せしています。")
 
             if kakuti_rate != 0:
                 corner_rate = get_corner_correction_rate(corner_check)
