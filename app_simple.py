@@ -1671,6 +1671,13 @@ with st.form("search_form"):
     contact_phone = st.text_input("電話番号（必須）", placeholder="例: 090-1234-5678")
     contact_email = st.text_input("メールアドレス（必須）", placeholder="例: example@email.com")
 
+    st.markdown("**個人情報の取り扱い（必須）**")
+    st.markdown(
+        '<a href="https://www.kyouei-asahikawa.com/privacy.html" target="_blank" rel="noopener noreferrer">『個人情報の取り扱い等について』</a>をお読みいただき、ご同意のうえ査定してください。',
+        unsafe_allow_html=True,
+    )
+    privacy_agree = st.checkbox("□同意する", value=False, key="privacy_agree")
+
     submitted = st.form_submit_button("査定を実行")
 
 if submitted:
@@ -1693,6 +1700,8 @@ if submitted:
         st.error("電話番号（必須）を入力してください。")
     elif not contact_email or not contact_email.strip():
         st.error("メールアドレス（必須）を入力してください。")
+    elif not privacy_agree:
+        st.error("個人情報の取り扱いにご同意いただく必要があります。")
     elif not address or not address.strip():
         st.error("住所を入力してください。")
     elif not st.session_state.csv_cases:
