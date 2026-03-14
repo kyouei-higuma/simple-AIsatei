@@ -1676,7 +1676,7 @@ with st.form("search_form"):
         '<a href="https://www.kyouei-asahikawa.com/privacy.html" target="_blank" rel="noopener noreferrer">『個人情報の取り扱い等について』</a>をお読みいただき、ご同意のうえ査定してください。',
         unsafe_allow_html=True,
     )
-    privacy_agree = st.checkbox("□同意する", value=False, key="privacy_agree")
+    privacy_agree = st.checkbox("同意する", value=False, key="privacy_agree")
 
     submitted = st.form_submit_button("査定を実行")
 
