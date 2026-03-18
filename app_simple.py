@@ -30,6 +30,15 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# Streamlitのツールバー・ヘッダー・フッターを非表示
+st.markdown("""
+<style>
+[data-testid="stToolbar"] { display: none !important; }
+[data-testid="stHeader"] { display: none !important; }
+footer { display: none !important; }
+</style>
+""", unsafe_allow_html=True)
+
 # 定数
 MAX_REFERENCE_CASES = 20
 M2_TO_TSUBO = 3.30578  # 1坪 = 3.30578㎡（坪単価換算用）
