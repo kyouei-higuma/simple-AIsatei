@@ -131,8 +131,8 @@ def send_inquiry_to_webhook(payload: Dict[str, Any]) -> Tuple[bool, Optional[str
 # 物件種別 → CSVの物件項目（同様事例の絞り込み用）
 PROPERTY_TYPE_TO_CSV_TYPE = {
     "土地": ["売地", "土地", "宅地"],
-    "中古住宅（戸建て）": ["中古戸建"],
-    "中古マンション": ["中古マンション"],
+    "中古住宅（戸建て）": ["中古戸建", "既存住宅"],
+    "中古マンション": ["中古マンション", "既存ＭＳ"],
 }
 
 
