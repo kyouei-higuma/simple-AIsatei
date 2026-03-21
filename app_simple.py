@@ -222,19 +222,28 @@ def haversine_distance(lon1: float, lat1: float, lon2: float, lat2: float) -> fl
     return R * c
 
 
-def parse_numeric(value, suffixes: Tuple[str, ...] = (",", " ", "円", "/m²", "㎡", "m²")) -> Optional[float]:
-    """文字列を数値に変換"""
-    if value is None:
+def parse_numeric(value, suffixes: Tuple[str, ...] = (",", " ", "円", "/m²", "㎡", "m²", "万円", "万")) -> Optional[float]:
+    """文字列を数値に変換（単位が含まれていても抽出する）"""
+    if pd.isna(value):
         return None
     if isinstance(value, (int, float)):
         return float(value)
-    s = str(value)
-    for suffix in suffixes:
-        s = s.replace(suffix, "")
-    try:
-        return float(s)
-    except ValueError:
-        return None
+    
+    s = str(value).replace(",", "").replace(" ", "")
+    # "320万円" のような場合は 10000 倍する
+    is_man = "万円" in s or "万" in s
+    
+    import re
+    m = re.search(r"([\d\.]+)", s)
+    if m:
+        try:
+            val = float(m.group(1))
+            if is_man:
+                val *= 10000
+            return val
+        except ValueError:
+            return None
+    return None
 
 
 def _parse_area_to_sqm(value: Any) -> Optional[float]:
@@ -1829,7 +1838,7 @@ if submitted:
                         kakuti_rate = corner_rate
                         csv_2km = None
                         if property_type == "中古住宅（戸建て）" and building_age_val is not None and building_age_val <= 34:
-                            csv_2km_raw = filter_csv_by_distance(csv_raw, lat, lon, 2000, csv_df=csv_df)
+                            csv_2km_raw = filter_csv_by_distance(st.session_state.csv_cases, lat, lon, 2000, csv_df=st.session_state.csv_df)
                             csv_2km = apply_case_filters(csv_2km_raw, filter_type, 0, 50, filter_contract_value)
                         result = compute_valuation(
                             property_type, avg_unit_price, building_age_correction,
