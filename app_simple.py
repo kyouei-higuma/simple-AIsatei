@@ -721,7 +721,9 @@ def _compute_valuation_detached(
 
     if not land_prices:
         return None
-    avg_land = sum(land_prices) / len(land_prices)
+    avg_land = _compute_robust_average(land_prices)
+    if avg_land is None:
+        return None
     land_value_base = land_area * avg_land * (1.0 + kakuti_rate)
 
     # 昭和56年以前（築44年以上）: 建物評価0
@@ -750,7 +752,9 @@ def _compute_valuation_detached(
             if bldg_val >= 0:
                 building_values.append(bldg_val)
         if building_values:
-            avg_building = sum(building_values) / len(building_values)
+            avg_building = _compute_robust_average(building_values)
+            if avg_building is None:
+                avg_building = 0
             land_value = land_value_base * LAND_MARKUP_RATE
             return land_value + avg_building, land_value, avg_building
 
@@ -974,10 +978,36 @@ def build_csv_reference_table(
     return pd.DataFrame(rows)
 
 
+def _compute_robust_average(values: List[float]) -> Optional[float]:
+    """外れ値を除外して平均値を算出する（四分位範囲：IQR を利用）"""
+    if not values:
+        return None
+    if len(values) < 4:
+        # データが少ない場合は単純平均
+        return sum(values) / len(values)
+        
+    arr = np.array(values)
+    q1 = np.percentile(arr, 25)
+    q3 = np.percentile(arr, 75)
+    iqr = q3 - q1
+    lower_bound = q1 - (iqr * 1.5)
+    upper_bound = q3 + (iqr * 1.5)
+    
+    # さらに極端に高い外れ値（中央値の2倍以上など）も念のためカット
+    median_val = np.median(arr)
+    if median_val > 0:
+        upper_bound = min(upper_bound, median_val * 2.0)
+        lower_bound = max(lower_bound, median_val * 0.2)
+        
+    filtered = [v for v in values if lower_bound <= v <= upper_bound]
+    if not filtered:
+        return sum(values) / len(values)
+    return sum(filtered) / len(filtered)
+
 def compute_avg_unit_price(csv_features: List[Dict]) -> Tuple[Optional[float], int]:
     """
     CSV事例から㎡単価の平均を算出。戻り値: (平均単価, 件数)
-    外れ値（周辺中央値の2倍以上）は計算から除外する。
+    外れ値（IQRなどを用いた堅牢な手法）は計算から除外する。
     """
     units = []
     for f in csv_features:
@@ -986,14 +1016,8 @@ def compute_avg_unit_price(csv_features: List[Dict]) -> Tuple[Optional[float], i
             units.append(up)
     if not units:
         return None, 0
-    arr = np.array(units)
-    median_val = np.median(arr)
-    if median_val is not None and median_val > 0:
-        threshold = median_val * 2.0
-        units = [u for u in units if u <= threshold]
-    if not units:
-        return None, 0
-    return sum(units) / len(units), len(units)
+    avg_price = _compute_robust_average(units)
+    return avg_price, len(units)
 
 
 def _format_date_for_display(val: Any) -> str:
