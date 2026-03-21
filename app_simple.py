@@ -1625,7 +1625,7 @@ property_type = st.radio(
 
 # 面積・築年数はフォーム外に配置（フォーム内だと初回送信で値が正しく取得されないため）
 if property_type == "土地":
-    land_unit = st.radio("土地面積の単位", ["㎡", "坪"], horizontal=True, key="land_unit_tochi")
+    land_unit = st.radio("土地面積の単位", ["坪", "㎡"], horizontal=True, key="land_unit_tochi")
     if land_unit == "㎡":
         land_area_input = st.number_input("土地面積（㎡）", min_value=1.0, max_value=10000.0, value=100.0, step=1.0, key="land_area_tochi_m2")
     else:
@@ -1635,13 +1635,20 @@ if property_type == "土地":
     exclusive_area_input = 0.0
     building_age = 0
 elif property_type == "中古住宅（戸建て）":
-    land_unit = st.radio("土地面積の単位", ["㎡", "坪"], horizontal=True, key="land_unit_house")
+    land_unit = st.radio("土地面積の単位", ["坪", "㎡"], horizontal=True, key="land_unit_house")
     if land_unit == "㎡":
         land_area_input = st.number_input("土地面積（㎡）", min_value=0.0, max_value=10000.0, value=100.0, step=1.0, key="land_area_house_m2")
     else:
         land_tsubo = st.number_input("土地面積（坪）", min_value=0.0, max_value=3500.0, value=30.0, step=0.5, key="land_area_house_tsubo")
         land_area_input = land_tsubo * M2_TO_TSUBO
-    building_area_input = st.number_input("建物延床面積（㎡）", min_value=1.0, max_value=500.0, value=80.0, step=0.1, key="building_area_house")
+
+    bldg_unit = st.radio("建物延床面積の単位", ["坪", "㎡"], horizontal=True, key="bldg_unit_house")
+    if bldg_unit == "㎡":
+        building_area_input = st.number_input("建物延床面積（㎡）", min_value=1.0, max_value=1000.0, value=100.0, step=1.0, key="bldg_area_house_m2")
+    else:
+        bldg_tsubo = st.number_input("建物延床面積（坪）", min_value=0.5, max_value=300.0, value=30.0, step=0.5, key="bldg_area_house_tsubo")
+        building_area_input = bldg_tsubo * M2_TO_TSUBO
+
     exclusive_area_input = 0.0
     building_age = st.number_input("築年数（年）", min_value=0, max_value=100, value=0, step=1, key="building_age_input")
 else:
@@ -1699,16 +1706,13 @@ if st.session_state.get("show_map"):
             st.rerun()
 
 with st.form("search_form"):
-    # 旭川市内なら半径2km、市外なら半径5kmをデフォルトに
-    default_radius = 2.0 if "旭川市" in (address or "") else 5.0
-    radius_km = st.slider(
-        "検索半径（km）",
-        0.5, 10.0, default_radius, 0.5,
-    )
+    # 旭川市内は半径2km、市外は半径5kmに固定
+    radius_km = 2.0 if "旭川市" in (address or "") else 5.0
+    st.info(f"💡 検索半径は自動で設定されます（旭川市内: 2km、市外: 5km / 今回は **{radius_km}km** で検索します）")
 
     st.caption(f"半径{radius_km}㎞の、過去3年の成約事例データを参考にしています。")
 
-    corner_check = st.checkbox("角地・準角地（+5%）", value=False)
+    corner_check = False  # 角地・準角地の補正は無効化
 
     st.markdown("---")
     st.markdown("**ご連絡情報の入力をお願いします。**")
@@ -1906,16 +1910,17 @@ if submitted:
                         if property_type == "土地" or (property_type == "中古住宅（戸建て）" and land_breakdown is not None):
                             st.caption("※ 成約ベースの価格から、㎡単価・坪単価に20%を上乗せしています。")
 
-                        st.markdown("**補正内訳（画地補正）**")
-                        kakuti_rows = [
-                            ("角地・準角地", corner_rate, f"{corner_rate*100:+.0f}%"),
-                        ]
-                        kakuti_df = pd.DataFrame(
-                            [(n, r) for n, _, r in kakuti_rows],
-                            columns=["項目", "補正率"]
-                        )
-                        st.dataframe(kakuti_df, use_container_width=True, hide_index=True)
-                        st.caption(f"合計画地補正率: {kakuti_rate*100:+.0f}%")
+                        if kakuti_rate != 0:
+                            st.markdown("**補正内訳（画地補正）**")
+                            kakuti_rows = [
+                                ("角地・準角地", corner_rate, f"{corner_rate*100:+.0f}%"),
+                            ]
+                            kakuti_df = pd.DataFrame(
+                                [(n, r) for n, _, r in kakuti_rows],
+                                columns=["項目", "補正率"]
+                            )
+                            st.dataframe(kakuti_df, use_container_width=True, hide_index=True)
+                            st.caption(f"合計画地補正率: {kakuti_rate*100:+.0f}%")
 
                         latex_f, detail_f = format_valuation_formula(
                             property_type, valuation, display_avg, building_age_correction,
