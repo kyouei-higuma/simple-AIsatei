@@ -1102,50 +1102,62 @@ def build_price_trend_chart(csv_features: List[Dict]) -> Optional[Any]:
 
 def get_price_trend_analysis(csv_features: List[Dict]) -> Optional[str]:
     """
-    直近1年と3年前の中央値単価を比較し、分析コメントを生成。
-    外れ値の影響を抑えるため中央値（median）を使用し、
-    周辺中央値の2倍以上の異常に高いデータは計算から除外する。
+    直近1年と3年前の平均単価を比較し、分析コメントを生成。
+    外れ値の影響を抑えるためIQR等を利用して外れ値を除外した上で平均値を使用する。
     """
     rows = []
     for f in csv_features:
-        p = f.get("properties", {})
-        total = parse_numeric(p.get("u_transaction_price_total_ja"))
-        land_a = parse_numeric(p.get("土地面積_数値"))
-        bldg_a = parse_numeric(p.get("建物面積_数値"))
-        excl_a = parse_numeric(p.get("専有面積_数値"))
-        area = excl_a if excl_a and excl_a > 0 else ((land_a or 0) + (bldg_a or 0)) or land_a or bldg_a
-        if not total or not area or area <= 0:
+        up = get_unit_price(f)
+        if up is None or up <= 0:
             continue
+        p = f.get("properties", {})
         date_str = p.get("point_in_time_name_ja") or p.get("成約年月日") or ""
         dt = _parse_date_ymd(date_str)
         if dt is None:
             continue
-        rows.append({"dt": dt, "unit_price": total / area})
+        rows.append({"dt": dt, "unit_price": up})
+        
     if len(rows) < 2:
         return None
+        
     df = pd.DataFrame(rows)
-    # 外れ値除外：周辺中央値の2倍以上のデータを計算から除外
-    overall_median = df["unit_price"].median()
-    if overall_median is not None and overall_median > 0:
-        threshold = overall_median * 2.0
-        df = df[df["unit_price"] <= threshold]
+    # 外れ値除外（四分位範囲）
+    units = df["unit_price"].tolist()
+    if len(units) >= 4:
+        arr = np.array(units)
+        q1 = np.percentile(arr, 25)
+        q3 = np.percentile(arr, 75)
+        iqr = q3 - q1
+        lower_bound = q1 - (iqr * 1.5)
+        upper_bound = q3 + (iqr * 1.5)
+        median_val = np.median(arr)
+        if median_val > 0:
+            upper_bound = min(upper_bound, median_val * 2.0)
+            lower_bound = max(lower_bound, median_val * 0.2)
+        df = df[(df["unit_price"] >= lower_bound) & (df["unit_price"] <= upper_bound)]
+        
     if len(df) < 2:
         return None
+        
     now = datetime.now()
     one_year_ago = datetime(now.year - 1, now.month, 1)
     two_years_ago = datetime(now.year - 2, now.month, 1)
     three_years_ago = datetime(now.year - 3, now.month, 1)
+    
     recent = df[df["dt"] >= one_year_ago]["unit_price"]
     old = df[(df["dt"] >= three_years_ago) & (df["dt"] < two_years_ago)]["unit_price"]
+    
     if len(recent) == 0 or len(old) == 0:
         return None
-    recent_median = recent.median()
-    old_median = old.median()
-    if old_median is None or old_median <= 0:
+        
+    recent_avg = recent.mean()
+    old_avg = old.mean()
+    if pd.isna(old_avg) or old_avg <= 0:
         return None
-    pct = (recent_median - old_median) / old_median * 100
+        
+    pct = (recent_avg - old_avg) / old_avg * 100
     direction = "上昇" if pct > 0 else "下落"
-    return f"直近1年間の中央値単価は、3年前と比較して **{abs(pct):.1f}% {direction}** しています。（外れ値を除外し中央値で算出）"
+    return f"直近1年間の平均単価は、3年前と比較して **{abs(pct):.1f}% {direction}** しています。（外れ値を除外し平均値で算出）"
 
 
 def _build_marker_tooltip_html(feature: Dict) -> str:
