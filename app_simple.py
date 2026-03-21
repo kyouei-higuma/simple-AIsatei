@@ -684,7 +684,7 @@ def _compute_valuation_detached(
     中古戸建の査定：
     ・昭和56年以前（築44年以上）: 建物評価0（リフォームされていても）
     ・築35年以上: 建物基本評価0、リフォーム等で変動
-    ・築34年以下: 土地2km・売買価格差額で建物評価、土地20%上乗せ（表示と一致するようavg_unit_priceベース）
+    ・築34年以下: 土地2km・売買価格差額で建物評価（土地の上乗せは廃止）
     """
     # 土地単価算出用データ（2km圏内の「土地」データがあればそれを優先、なければ築25年以上の中古戸建で代替）
     land_prices = []
@@ -728,13 +728,13 @@ def _compute_valuation_detached(
 
     # 昭和56年以前（築44年以上）: 建物評価0
     if subject_building_age is not None and subject_building_age >= 44:
-        return land_value_base * LAND_MARKUP_RATE, land_value_base * LAND_MARKUP_RATE, 0
+        return land_value_base, land_value_base, 0
 
     # 築35年以上: 建物基本評価0
     if subject_building_age is None or subject_building_age >= 35:
-        return land_value_base * LAND_MARKUP_RATE, land_value_base * LAND_MARKUP_RATE, 0
+        return land_value_base, land_value_base, 0
 
-    # 築34年以下: 2km圏内土地単価から算出した土地価格(20%上乗せ) + (売買価格 - 土地価格)の平均
+    # 築34年以下: 2km圏内土地単価から算出した土地価格 + (売買価格 - 土地価格)の平均
     if csv_features_2km and subject_building_age is not None and subject_building_age <= 34:
         building_values = []
         for f in csv_features_2km:
@@ -755,15 +755,15 @@ def _compute_valuation_detached(
             avg_building = _compute_robust_average(building_values)
             if avg_building is None:
                 avg_building = 0
-            land_value = land_value_base * LAND_MARKUP_RATE
+            land_value = land_value_base
             return land_value + avg_building, land_value, avg_building
 
     # フォールバック: 従来ロジック（築20年以下は残価率、築25年以上は0）
     if subject_building_age is None or subject_building_age >= 25:
-        return land_value_base * LAND_MARKUP_RATE, land_value_base * LAND_MARKUP_RATE, 0
+        return land_value_base, land_value_base, 0
     residual = get_building_residual_rate_20y(float(subject_building_age))
     building_value = STANDARD_NEW_BUILDING_PRICE * residual
-    land_value = land_value_base * LAND_MARKUP_RATE
+    land_value = land_value_base
     return land_value + building_value, land_value, building_value
 
 
@@ -1937,7 +1937,7 @@ if submitted:
                         else:
                             st.info("PDFの生成に失敗しました。reportlab が正しくインストールされているか確認してください。")
                         # 土地の場合は成約ベースから20%上乗せで表示。
-                        # 中古戸建の場合は、land_breakdown（2km圏内土地相場から算出した土地評価額）から逆算した単価を表示
+                        # 中古戸建の場合はそのまま（上乗せなし）
                         if property_type == "中古住宅（戸建て）" and land_breakdown is not None:
                             display_avg = (land_breakdown / land_area_input) / (1.0 + kakuti_rate) if land_area_input > 0 else 0
                             display_adj = display_avg
@@ -1958,8 +1958,8 @@ if submitted:
                             st.metric("参考取引件数", f"{csv_count} 件")
                         count_msg = f"{total_count}件中 {csv_count}件を表示中" if total_count != csv_count else f"{csv_count}件"
                         st.caption(f"※ 半径{radius_km}㎞の、過去3年の成約事例データを参考にしています。（{count_msg}）")
-                        if property_type == "土地" or (property_type == "中古住宅（戸建て）" and land_breakdown is not None):
-                            st.caption("※ 成約ベースの価格から、㎡単価・坪単価に20%を上乗せしています。")
+            if property_type == "土地":
+                st.caption("※ 成約ベースの価格から、㎡単価・坪単価に20%を上乗せしています。")
 
                         if kakuti_rate != 0:
                             st.markdown("**補正内訳（画地補正）**")
@@ -2222,7 +2222,7 @@ elif st.session_state.search_result is not None:
                 st.metric("参考取引件数", f"{csv_count} 件")
             count_msg = f"{total_count}件中 {csv_count}件を表示中" if total_count != csv_count else f"{csv_count}件"
             st.caption(f"※ 半径{radius_km}㎞の、過去3年の成約事例データを参考にしています。（{count_msg}、住所: {address}）")
-            if property_type == "土地" or (property_type == "中古住宅（戸建て）" and land_breakdown is not None):
+            if property_type == "土地":
                 st.caption("※ 成約ベースの価格から、㎡単価・坪単価に20%を上乗せしています。")
 
             if kakuti_rate != 0:
