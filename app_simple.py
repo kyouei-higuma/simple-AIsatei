@@ -237,15 +237,38 @@ def parse_numeric(value, suffixes: Tuple[str, ...] = (",", " ", "円", "/m²", "
 
 def _parse_area_to_sqm(value: Any) -> Optional[float]:
     """面積を㎡の数値に変換"""
-    if value is None:
+    if pd.isna(value):
         return None
     if isinstance(value, (int, float)):
         return float(value)
     s = str(value).replace(",", "").replace(" ", "").replace("㎡", "").replace("m²", "")
-    try:
-        return float(s)
-    except ValueError:
+    m = re.search(r"([\d\.]+)", s)
+    if m:
+        try:
+            return float(m.group(1))
+        except ValueError:
+            return None
+    return None
+
+
+def _parse_price_man(value: Any) -> Optional[int]:
+    """価格文字列（例: '320万円'）を数値に変換"""
+    if pd.isna(value):
         return None
+    if isinstance(value, (int, float)):
+        return int(value)
+    s = str(value).replace(",", "").strip()
+    is_man = "万円" in s or "万" in s
+    m = re.search(r"([\d\.]+)", s)
+    if m:
+        try:
+            val = float(m.group(1))
+            if is_man:
+                val *= 10000
+            return int(val)
+        except ValueError:
+            return None
+    return None
 
 
 def _parse_date_ymd(s: Any) -> Optional[datetime]:
@@ -295,6 +318,13 @@ def _parse_construction_date(cy_val: Any) -> Optional[datetime]:
                 return datetime(y, mo, 1)
             except ValueError:
                 return None
+    m3 = re.search(r"(\d{4})[年]?", s)
+    if m3:
+        y = int(m3.group(1))
+        try:
+            return datetime(y, 1, 1)
+        except ValueError:
+            return None
     return None
 
 
@@ -384,11 +414,11 @@ def _load_case_from_row(row: pd.Series, columns: Any, df_index: int) -> Dict[str
     """DataFrameの1行からcase辞書を構築"""
     has_construction_year = "construction_year" in columns
     addr = str(row.get("address", row.get("所在地", ""))).strip()
-    price = row.get("price")
-    if pd.isna(price):
-        price = None
-    elif isinstance(price, (int, float)):
-        price = int(price)
+    
+    # priceはcontract_price（成約価格）を優先
+    price_raw = row.get("contract_price") if pd.notna(row.get("contract_price")) else row.get("price")
+    price = _parse_price_man(price_raw)
+    
     contract_dt = _parse_date_ymd(row.get("contract_date", row.get("成約日", "")))
     construction_dt = None
     age_at_contract = None
@@ -397,15 +427,21 @@ def _load_case_from_row(row: pd.Series, columns: Any, df_index: int) -> Dict[str
     if contract_dt and construction_dt:
         delta = contract_dt - construction_dt
         age_at_contract = max(0, delta.days / 365)
+        
+    zoning_raw = str(row.get("zoning", row.get("用途地域", "")))
+    if " / " in zoning_raw:
+        zoning_raw = zoning_raw.split(" / ")[-1]
+        
     return {
         "所在地": addr,
         "成約価格_円": price,
         "成約年月日": str(row.get("contract_date", row.get("成約日", ""))),
         "物件項目": str(row.get("type", row.get("物件項目", ""))),
-        "用途地域": str(row.get("zoning", row.get("用途地域", ""))),
+        "用途地域": zoning_raw,
         "土地面積_数値": _parse_area_to_sqm(row.get("land_area")) if pd.notna(row.get("land_area")) else None,
         "建物面積_数値": _parse_area_to_sqm(row.get("building_area")) if pd.notna(row.get("building_area")) else None,
         "専有面積_数値": _parse_area_to_sqm(row.get("floor_area")) if pd.notna(row.get("floor_area")) else None,
+        "間取り": str(row.get("floor_plan", "")) if pd.notna(row.get("floor_plan")) else None,
         "接道状況": str(row.get("road_status", row.get("接道状況", ""))) if pd.notna(row.get("road_status")) else None,
         "接道1": str(row.get("road_width", row.get("接道1", ""))) if pd.notna(row.get("road_width")) else None,
         "築年数_成約時": age_at_contract,
