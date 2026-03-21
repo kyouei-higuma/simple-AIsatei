@@ -1958,8 +1958,8 @@ if submitted:
                             st.metric("参考取引件数", f"{csv_count} 件")
                         count_msg = f"{total_count}件中 {csv_count}件を表示中" if total_count != csv_count else f"{csv_count}件"
                         st.caption(f"※ 半径{radius_km}㎞の、過去3年の成約事例データを参考にしています。（{count_msg}）")
-            if property_type == "土地":
-                st.caption("※ 成約ベースの価格から、㎡単価・坪単価に20%を上乗せしています。")
+                        if property_type == "土地":
+                            st.caption("※ 成約ベースの価格から、㎡単価・坪単価に20%を上乗せしています。")
 
                         if kakuti_rate != 0:
                             st.markdown("**補正内訳（画地補正）**")
