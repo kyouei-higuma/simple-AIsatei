@@ -305,16 +305,28 @@ _MONTH_ABBREV = {
 
 
 def _parse_construction_date(cy_val: Any) -> Optional[datetime]:
-    """建築年月を datetime に変換。YYYY/MM、Mon-YY（例: Nov-75）に対応"""
+    """建築年月を datetime に変換。YYYY/MM、Mon-YY（例: Nov-75）、YYYY.0（年のみ）に対応"""
     if cy_val is None or (isinstance(cy_val, float) and pd.isna(cy_val)):
         return None
     s = str(cy_val).strip()
     if not s:
         return None
+    
+    # float型（例: 1984.0）の場合は年のみとして処理
+    m_float = re.match(r"^(\d{4})\.0$", s)
+    if m_float:
+        try:
+            return datetime(int(m_float.group(1)), 1, 1)
+        except ValueError:
+            return None
+            
     m = re.search(r"(\d{4})[/年.-](\d{1,2})", s)
     if m:
         y, mo = int(m.group(1)), int(m.group(2))
         try:
+            # ".0" がマッチしてしまった場合（上でも弾くが念のため）
+            if mo == 0:
+                mo = 1
             return datetime(y, mo, 1)
         except ValueError:
             return None
