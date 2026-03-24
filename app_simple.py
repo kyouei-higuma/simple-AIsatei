@@ -1844,8 +1844,12 @@ with st.container():
     # 外枠の開始
     st.markdown('<div class="hero-wrapper">', unsafe_allow_html=True)
     
-    # ロゴ
-    st.markdown('<div class="hero-logo-box"><div class="hero-logo-k">K</div><div class="hero-logo-text">杏栄</div></div>', unsafe_allow_html=True)
+    # ロゴ（画像に変更）
+    logo_path = Path(__file__).parent / "assets" / "company_logo.png"
+    if logo_path.exists():
+        st.image(str(logo_path), width=150)
+    else:
+        st.markdown('<div class="hero-logo-box"><div class="hero-logo-k">K</div><div class="hero-logo-text">杏栄</div></div>', unsafe_allow_html=True)
     
     # キャッチコピー
     st.markdown('<div class="hero-title">スマホで最短1分査定！<br>旭川の家の価値、カンタン価格診断</div>', unsafe_allow_html=True)
@@ -1860,9 +1864,9 @@ with st.container():
         st.markdown('<div class="feature-item"><span class="feature-check">✅</span> 旭川の相場に最適化</div>', unsafe_allow_html=True)
         
     with col_char:
-        # character_path = Path(__file__).parent / "assets" / "Copilot_20260324_100708.png"
-        # 直接指定で試行
-        st.image("assets/Copilot_20260324_100708.png", use_column_width=True)
+        character_path = Path(__file__).parent / "assets" / "Copilot_20260324_100708.png"
+        if character_path.exists():
+            st.image(str(character_path), use_column_width=True)
             
     # 外枠の終了
     st.markdown('</div>', unsafe_allow_html=True)
