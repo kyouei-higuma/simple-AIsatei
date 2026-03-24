@@ -1839,48 +1839,63 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 2. UI構築（標準パーツを使用）
-with st.container():
-    # 1. ロゴを中央に大きく配置
-    logo_path = Path(__file__).parent / "assets" / "company_logo.png"
-    col_l1, col_l2, col_l3 = st.columns([1, 4, 1])
-    with col_l2:
-        if logo_path.exists():
-            st.image(str(logo_path), use_column_width=True)
-        else:
-            st.markdown('<div style="text-align: center;"><div class="hero-logo-box" style="justify-content: center;"><div class="hero-logo-k">K</div><div class="hero-logo-text">杏栄</div></div></div>', unsafe_allow_html=True)
-    
-    st.markdown('<div style="margin-top: 20px;"></div>', unsafe_allow_html=True)
+# 2. UI構築（HTML/CSSによる高度なレイアウト制御）
+# Streamlitの標準要素を避け、一つのHTMLブロックにまとめることで余白を完全にコントロール
+def get_image_base64(path):
+    if not path.exists(): return ""
+    import base64
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
 
-    # 2. ヒーローセクション（外枠）
-    st.markdown('<div class="hero-wrapper" style="background: linear-gradient(135deg, #f0faff 0%, #e6f5ff 100%); padding: 35px; border: 2px solid #bde0fe;">', unsafe_allow_html=True)
-    
-    # キャッチコピー
-    st.markdown('<div class="hero-title" style="font-size: 36px; margin-bottom: 20px; text-align: center;">スマホで最短1分査定！<br>旭川の家の価値、カンタン価格診断</div>', unsafe_allow_html=True)
-    st.markdown('<div style="text-align: center; margin-bottom: 30px;"><div class="hero-subtitle" style="font-size: 20px; padding: 8px 25px;">最短60秒・匿名OK・営業なしで安心</div></div>', unsafe_allow_html=True)
-    
-    # 2カラム：特徴と画像
-    col_feat, col_char = st.columns([3, 2])
-    
-    with col_feat:
-        st.markdown('<div style="margin-top: 20px; padding-left: 20px;">', unsafe_allow_html=True)
-        st.markdown('<div class="feature-item" style="font-size: 20px; margin-bottom: 15px;"><span class="feature-check">✅</span> 旭川相場データをAIが自動分析</div>', unsafe_allow_html=True)
-        st.markdown('<div class="feature-item" style="font-size: 20px; margin-bottom: 15px;"><span class="feature-check">✅</span> 地域密着の安心サポート</div>', unsafe_allow_html=True)
-        st.markdown('<div class="feature-item" style="font-size: 20px; margin-bottom: 15px;"><span class="feature-check">✅</span> 旭川の相場に最適化</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+logo_base64 = get_image_base64(Path(__file__).parent / "assets" / "company_logo.png")
+person_base64 = get_image_base64(Path(__file__).parent / "assets" / "person_only.png")
+
+st.markdown(f"""
+<div style="text-align: center; font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 800px; margin: 0 auto; padding-top: 0px;">
+    <!-- ロゴ部分：余白を最小化 -->
+    <div style="margin-bottom: 5px; padding: 0;">
+        <img src="data:image/png;base64,{logo_base64}" style="width: 380px; max-width: 90%; height: auto;">
+    </div>
+
+    <!-- ヒーローセクション：ロゴの直後から開始 -->
+    <div style="background: linear-gradient(135deg, #f0faff 0%, #e6f5ff 100%); 
+                padding: 25px 35px; border-radius: 20px; border: 2px solid #bde0fe; 
+                box-shadow: 0 10px 30px rgba(0,0,0,0.05); text-align: left; position: relative; margin-top: 0px;">
         
-    with col_char:
-        # 切り抜いた人物画像を指定
-        person_path = Path(__file__).parent / "assets" / "person_only.png"
-        if person_path.exists():
-            st.image(str(person_path), use_column_width=True)
-        else:
-            character_path = Path(__file__).parent / "assets" / "Copilot_20260324_100708.png"
-            if character_path.exists():
-                st.image(str(character_path), use_column_width=True)
-            
-    # 外枠の終了
-    st.markdown('</div>', unsafe_allow_html=True)
+        <!-- キャッチコピー -->
+        <h1 style="font-size: 32px; color: #1a4f76; margin: 0 0 10px 0; font-weight: 800; line-height: 1.3;">
+            スマホで最短1分査定！<br>
+            旭川の家の価値、カンタン価格診断
+        </h1>
+        
+        <div style="background: white; color: #4a6fa5; display: inline-block; padding: 6px 20px; 
+                    border-radius: 50px; font-weight: 700; font-size: 18px; border: 1px solid #d1e3f8; margin-bottom: 25px;">
+            最短60秒・匿名OK・営業なしで安心
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+             <!-- 特徴リスト -->
+             <div style="flex: 1; padding-bottom: 10px;">
+                 <div style="font-size: 20px; font-weight: 700; color: #333; margin-bottom: 12px; display: flex; align-items: center;">
+                    <span style="color: #28a745; margin-right: 12px; font-size: 24px;">✅</span> 旭川相場データをAIが自動分析
+                 </div>
+                 <div style="font-size: 20px; font-weight: 700; color: #333; margin-bottom: 12px; display: flex; align-items: center;">
+                    <span style="color: #28a745; margin-right: 12px; font-size: 24px;">✅</span> 地域密着の安心サポート
+                 </div>
+                 <div style="font-size: 20px; font-weight: 700; color: #333; display: flex; align-items: center;">
+                    <span style="color: #28a745; margin-right: 12px; font-size: 24px;">✅</span> 旭川の相場に最適化
+                 </div>
+             </div>
+             
+             <!-- 人物画像：右下に寄せて配置 -->
+             <div style="flex: 0 0 220px; text-align: right; margin-bottom: -27px; margin-right: -10px;">
+                 <img src="data:image/png;base64,{person_base64}" style="width: 220px; height: auto;">
+             </div>
+        </div>
+    </div>
+</div>
+<div style="margin-bottom: 40px;"></div>
+""", unsafe_allow_html=True)
 
 st.markdown("**物件種別**")
 property_type = st.radio(
