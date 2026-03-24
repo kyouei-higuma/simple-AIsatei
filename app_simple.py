@@ -1847,26 +1847,33 @@ with st.container():
     # ロゴ（画像に変更）
     logo_path = Path(__file__).parent / "assets" / "company_logo.png"
     if logo_path.exists():
-        st.image(str(logo_path), width=150)
+        st.image(str(logo_path), width=250)  # サイズを大きく (150 -> 250)
     else:
         st.markdown('<div class="hero-logo-box"><div class="hero-logo-k">K</div><div class="hero-logo-text">杏栄</div></div>', unsafe_allow_html=True)
     
     # キャッチコピー
-    st.markdown('<div class="hero-title">スマホで最短1分査定！<br>旭川の家の価値、カンタン価格診断</div>', unsafe_allow_html=True)
-    st.markdown('<div class="hero-subtitle">最短60秒・匿名OK・営業なしで安心</div>', unsafe_allow_html=True)
+    st.markdown('<div class="hero-title" style="font-size: 32px; margin-top: 15px;">スマホで最短1分査定！<br>旭川の家の価値、カンタン価格診断</div>', unsafe_allow_html=True)
+    st.markdown('<div class="hero-subtitle" style="font-size: 18px; padding: 6px 20px;">最短60秒・匿名OK・営業なしで安心</div>', unsafe_allow_html=True)
     
     # 2カラム：特徴と画像
     col_feat, col_char = st.columns([3, 2])
     
     with col_feat:
-        st.markdown('<div class="feature-item"><span class="feature-check">✅</span> 旭川相場データをAIが自動分析</div>', unsafe_allow_html=True)
-        st.markdown('<div class="feature-item"><span class="feature-check">✅</span> 地域密着の安心サポート</div>', unsafe_allow_html=True)
-        st.markdown('<div class="feature-item"><span class="feature-check">✅</span> 旭川の相場に最適化</div>', unsafe_allow_html=True)
+        st.markdown('<div style="margin-top: 10px;">', unsafe_allow_html=True)
+        st.markdown('<div class="feature-item" style="font-size: 18px;"><span class="feature-check">✅</span> 旭川相場データをAIが自動分析</div>', unsafe_allow_html=True)
+        st.markdown('<div class="feature-item" style="font-size: 18px;"><span class="feature-check">✅</span> 地域密着の安心サポート</div>', unsafe_allow_html=True)
+        st.markdown('<div class="feature-item" style="font-size: 18px;"><span class="feature-check">✅</span> 旭川の相場に最適化</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
         
     with col_char:
-        character_path = Path(__file__).parent / "assets" / "Copilot_20260324_100708.png"
-        if character_path.exists():
-            st.image(str(character_path), use_column_width=True)
+        # 切り抜いた人物画像を指定
+        person_path = Path(__file__).parent / "assets" / "person_only.png"
+        if person_path.exists():
+            st.image(str(person_path), use_column_width=True)
+        else:
+            character_path = Path(__file__).parent / "assets" / "Copilot_20260324_100708.png"
+            if character_path.exists():
+                st.image(str(character_path), use_column_width=True)
             
     # 外枠の終了
     st.markdown('</div>', unsafe_allow_html=True)
