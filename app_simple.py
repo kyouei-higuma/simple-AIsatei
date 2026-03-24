@@ -45,13 +45,13 @@ iframe[title="streamlitApp"] { display: block !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# 翻訳プロンプト抑制 + Streamlit Cloud の「Created by」「Hosted with Streamlit」を非表示
+# 翻訳プロンプト抑制（※Streamlit Community Cloud のブランディングはプラットフォーム制限により非表示不可。セルフホスティングで解消。docs/セルフホスティング手順.md 参照）
 st.components.v1.html("""
 <script>
 (function(){
-  function hide(doc) {
+  function run(doc) {
     try {
-      if (!doc) return;
+      if (!doc || !doc.documentElement) return;
       var d = doc.documentElement;
       d.setAttribute('translate', 'no');
       d.setAttribute('lang', 'ja');
@@ -61,27 +61,17 @@ st.components.v1.html("""
         m = doc.createElement('meta');
         m.name = 'google';
         m.content = 'notranslate';
-        doc.head && doc.head.appendChild(m);
-      } else { m.content = 'notranslate'; }
-      var footers = doc.querySelectorAll('footer, [role="contentinfo"], [class*="footer"]');
-      footers.forEach(function(el){ el.style.display='none'; el.style.visibility='hidden'; });
-      var links = doc.querySelectorAll('a[href*="streamlit.app"], a[href*="streamlit.io"]');
-      links.forEach(function(a){
-        var txt = (a.textContent || '').toLowerCase();
-        if (txt.indexOf('hosted with') >= 0 || txt.indexOf('created by') >= 0) {
-          var p = a.parentElement;
-          for (var i = 0; i < 5 && p && p !== doc.body; i++) {
-            p.style.cssText = 'display:none!important;visibility:hidden!important;';
-            p = p.parentElement;
-          }
-        }
-      });
+        if (doc.head) doc.head.appendChild(m);
+      }
     } catch(e) {}
   }
-  hide(document);
-  if (window.parent && window.parent !== window) hide(window.parent.document);
-  setTimeout(function(){ hide(document); if (window.parent) hide(window.parent.document); }, 500);
-  setTimeout(function(){ hide(document); if (window.parent) hide(window.parent.document); }, 2000);
+  run(document);
+  var w = window;
+  while (w && w !== w.top) {
+    try { run(w.document); } catch(e) {}
+    w = w.parent;
+  }
+  if (w && w !== window) run(w.document);
 })();
 </script>
 """, height=0)

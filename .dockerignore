@@ -1,0 +1,12 @@
+.git
+.venv
+venv
+__pycache__
+*.pyc
+.gitignore
+*.md
+.env
+.idea
+.vscode
+output*.txt
+valuation_core.py

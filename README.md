@@ -67,6 +67,10 @@ streamlit run app_simple.py
 - **main.py**: 本格版（地図・事例リストあり）
 - **app_simple.py**: 簡易版（査定結果・価格トレンドグラフのみ）
 
+### 「Created by」「Hosted with Streamlit」を非表示にするには
+
+Streamlit Community Cloud（無料）では、これらのブランディングを非表示にできません。**セルフホスティング**で解消できます。手順は [docs/セルフホスティング手順.md](docs/セルフホスティング手順.md) を参照してください（Render・Railway・Docker 対応）。
+
 ### お客様情報の自動転送（app_simple.py）
 
 査定完了時、お客様情報（お名前・電話番号・メールアドレス）と査定結果をWebhookに自動送信できます。
