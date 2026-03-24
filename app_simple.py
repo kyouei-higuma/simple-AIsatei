@@ -1722,6 +1722,14 @@ def _generate_valuation_pdf_impl(
     buf.seek(0)
     return buf.read()
 
+import base64
+def get_image_base64(img_path: Path) -> str:
+    """画像をBase64文字列に変換する（HTML埋め込み用）"""
+    if img_path.exists():
+        with open(img_path, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode()
+    return ""
+
 
 # ========== UI ==========
 if "search_result" not in st.session_state:
@@ -1749,13 +1757,87 @@ with st.sidebar:
     st.info(f"**CSV（過去3年分）**: {n_csv} 件")
     if n_csv == 0:
         st.warning("data/reins_data_3years.csv が見つかりません。")
-st.title("🏠 AI査定")
-st.caption("スマホでも見やすいシンプルな査定フォームです")
 
+# ランディングページ風ヘッダー
 st.markdown("""
 <style>
     @media (max-width: 768px) { div[data-testid="column"] { min-width: 100% !important; } }
+    .hero-container {
+        background-color: #e6f2ff;
+        padding: 20px 15px;
+        border-radius: 10px;
+        margin-bottom: 25px;
+        text-align: center;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    }
+    .hero-logo {
+        font-size: 24px;
+        font-weight: 900;
+        color: #2c3e50;
+        margin-bottom: 15px;
+        letter-spacing: 1px;
+    }
+    .hero-logo span {
+        color: #1f77b4;
+    }
+    .hero-title {
+        font-size: 22px;
+        font-weight: bold;
+        color: #1a4f76;
+        line-height: 1.4;
+        margin-bottom: 10px;
+    }
+    .hero-subtitle {
+        font-size: 14px;
+        color: #4a6fa5;
+        font-weight: bold;
+        margin-bottom: 20px;
+    }
+    .hero-features {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        text-align: left;
+        background: rgba(255,255,255,0.7);
+        padding: 15px;
+        border-radius: 8px;
+        margin: 0 auto;
+        max-width: 300px;
+    }
+    .hero-features p {
+        margin: 0;
+        font-size: 14px;
+        font-weight: bold;
+        color: #333;
+    }
 </style>
+""", unsafe_allow_html=True)
+
+# 画像の読み込み
+character_path = Path(__file__).parent / "assets" / "Copilot_20260324_100708.png"
+char_b64 = get_image_base64(character_path)
+
+if char_b64:
+    char_img_tag = f'<img src="data:image/png;base64,{char_b64}" style="width: 100%; max-width: 180px; margin-top: 15px;">'
+else:
+    char_img_tag = ""
+
+st.markdown(f"""
+<div class="hero-container">
+    <div class="hero-logo"><span>K</span> 杏栄</div>
+    <div class="hero-title">スマホで最短1分査定！<br>旭川の家の価値、カンタン価格診断</div>
+    <div class="hero-subtitle">最短60秒・匿名OK・営業なしで安心</div>
+    <div style="display: flex; align-items: center; justify-content: center; gap: 15px; flex-wrap: wrap;">
+        <div class="hero-features">
+            <p>✅ 旭川相場データをAIが自動分析</p>
+            <p>✅ 地域密着の安心サポート</p>
+            <p>✅ 旭川の相場に最適化</p>
+        </div>
+        <div>
+            {char_img_tag}
+        </div>
+    </div>
+</div>
 """, unsafe_allow_html=True)
 
 st.markdown("**物件種別**")
