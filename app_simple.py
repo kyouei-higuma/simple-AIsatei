@@ -1839,60 +1839,49 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 2. UI構築（HTML/CSSによる高度なレイアウト制御）
-# Streamlitの標準要素を避け、一つのHTMLブロックにまとめることで余白を完全にコントロール
-def get_image_base64(path):
+# 2. UI構築（インデントなしでMarkdownを記述し、不具合を完全に回避）
+import base64
+def get_b64(path):
     if not path.exists(): return ""
-    import base64
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
-logo_base64 = get_image_base64(Path(__file__).parent / "assets" / "company_logo.png")
-person_base64 = get_image_base64(Path(__file__).parent / "assets" / "person_only.png")
+logo_b64 = get_b64(Path(__file__).parent / "assets" / "company_logo.png")
+person_b64 = get_b64(Path(__file__).parent / "assets" / "person_only.png")
 
+# ロゴとヒーローセクションを一つのHTMLブロックとして記述（インデント厳禁）
 st.markdown(f"""
-<div style="text-align: center; font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 800px; margin: 0 auto; padding-top: 0px;">
-    <!-- ロゴ部分：余白を最小化 -->
-    <div style="margin-bottom: 5px; padding: 0;">
-        <img src="data:image/png;base64,{logo_base64}" style="width: 380px; max-width: 90%; height: auto;">
-    </div>
-
-    <!-- ヒーローセクション：ロゴの直後から開始 -->
-    <div style="background: linear-gradient(135deg, #f0faff 0%, #e6f5ff 100%); 
-                padding: 25px 35px; border-radius: 20px; border: 2px solid #bde0fe; 
-                box-shadow: 0 10px 30px rgba(0,0,0,0.05); text-align: left; position: relative; margin-top: 0px;">
-        
-        <!-- キャッチコピー -->
-        <h1 style="font-size: 32px; color: #1a4f76; margin: 0 0 10px 0; font-weight: 800; line-height: 1.3;">
-            スマホで最短1分査定！<br>
-            旭川の家の価値、カンタン価格診断
-        </h1>
-        
-        <div style="background: white; color: #4a6fa5; display: inline-block; padding: 6px 20px; 
-                    border-radius: 50px; font-weight: 700; font-size: 18px; border: 1px solid #d1e3f8; margin-bottom: 25px;">
-            最短60秒・匿名OK・営業なしで安心
-        </div>
-
-        <div style="display: flex; justify-content: space-between; align-items: flex-end;">
-             <!-- 特徴リスト -->
-             <div style="flex: 1; padding-bottom: 10px;">
-                 <div style="font-size: 20px; font-weight: 700; color: #333; margin-bottom: 12px; display: flex; align-items: center;">
-                    <span style="color: #28a745; margin-right: 12px; font-size: 24px;">✅</span> 旭川相場データをAIが自動分析
-                 </div>
-                 <div style="font-size: 20px; font-weight: 700; color: #333; margin-bottom: 12px; display: flex; align-items: center;">
-                    <span style="color: #28a745; margin-right: 12px; font-size: 24px;">✅</span> 地域密着の安心サポート
-                 </div>
-                 <div style="font-size: 20px; font-weight: 700; color: #333; display: flex; align-items: center;">
-                    <span style="color: #28a745; margin-right: 12px; font-size: 24px;">✅</span> 旭川の相場に最適化
-                 </div>
-             </div>
-             
-             <!-- 人物画像：右下に寄せて配置 -->
-             <div style="flex: 0 0 220px; text-align: right; margin-bottom: -27px; margin-right: -10px;">
-                 <img src="data:image/png;base64,{person_base64}" style="width: 220px; height: auto;">
-             </div>
-        </div>
-    </div>
+<div style="width: 100%; max-width: 850px; margin: 0 auto; text-align: center; font-family: 'Helvetica Neue', Arial, sans-serif;">
+<div style="margin: 0; padding: 0 0 5px 0;">
+<img src="data:image/png;base64,{logo_b64}" style="width: 420px; max-width: 95%; height: auto;">
+</div>
+<div style="background: linear-gradient(135deg, #f0faff 0%, #e6f5ff 100%); 
+border-radius: 20px; border: 3px solid #bde0fe; 
+box-shadow: 0 15px 35px rgba(0,0,0,0.08); text-align: left; padding: 30px; margin: 0; position: relative; overflow: hidden;">
+<h1 style="font-size: 34px; color: #1a4f76; margin: 0 0 10px 0; font-weight: 900; line-height: 1.3;">
+スマホで最短1分査定！<br>旭川の家の価値、カンタン価格診断
+</h1>
+<div style="background: white; color: #4a6fa5; display: inline-block; padding: 8px 25px; 
+border-radius: 50px; font-weight: 800; font-size: 20px; border: 1.5px solid #d1e3f8; margin-bottom: 25px;">
+最短60秒・匿名OK・営業なしで安心
+</div>
+<div style="display: flex; justify-content: space-between; align-items: flex-end; position: relative; z-index: 2;">
+<div style="flex: 1;">
+<div style="font-size: 21px; font-weight: 800; color: #2c3e50; margin-bottom: 15px; display: flex; align-items: center;">
+<span style="color: #28a745; margin-right: 15px; font-size: 26px;">✅</span> 旭川相場データをAIが自動分析
+</div>
+<div style="font-size: 21px; font-weight: 800; color: #2c3e50; margin-bottom: 15px; display: flex; align-items: center;">
+<span style="color: #28a745; margin-right: 15px; font-size: 26px;">✅</span> 地域密着の安心サポート
+</div>
+<div style="font-size: 21px; font-weight: 800; color: #2c3e50; display: flex; align-items: center;">
+<span style="color: #28a745; margin-right: 15px; font-size: 26px;">✅</span> 旭川の相場に最適化
+</div>
+</div>
+<div style="flex: 0 0 240px; text-align: right; margin-bottom: -32px; margin-right: -15px;">
+<img src="data:image/png;base64,{person_b64}" style="width: 240px; height: auto; display: block;">
+</div>
+</div>
+</div>
 </div>
 <div style="margin-bottom: 40px;"></div>
 """, unsafe_allow_html=True)
