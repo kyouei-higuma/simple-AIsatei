@@ -1860,8 +1860,9 @@ with st.container():
         st.markdown('<div class="feature-item"><span class="feature-check">✅</span> 旭川の相場に最適化</div>', unsafe_allow_html=True)
         
     with col_char:
-        if character_path.exists():
-            st.image(str(character_path), use_column_width=True)
+        # character_path = Path(__file__).parent / "assets" / "Copilot_20260324_100708.png"
+        # 直接指定で試行
+        st.image("assets/Copilot_20260324_100708.png", use_column_width=True)
             
     # 外枠の終了
     st.markdown('</div>', unsafe_allow_html=True)
