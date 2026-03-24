@@ -6,3 +6,7 @@ enableXsrfProtection = true
 
 [browser]
 gatherUsageStats = false
+
+# デプロイボタン・ツールバーを非表示（最下部アイコンも抑制）
+[client]
+toolbarMode = "viewer"

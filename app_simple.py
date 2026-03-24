@@ -30,14 +30,61 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Streamlitのツールバー・ヘッダー・フッターを非表示
+# Streamlitのツールバー・ヘッダー・フッター・下部アイコンを非表示
 st.markdown("""
 <style>
 [data-testid="stToolbar"] { display: none !important; }
 [data-testid="stHeader"] { display: none !important; }
 footer { display: none !important; }
+footer [data-testid="stMarkdownContainer"] { display: none !important; }
+.stDeployButton { display: none !important; }
+#stDecoration { display: none !important; }
+[data-testid="stAppViewContainer"] > footer { display: none !important; }
+[data-testid="stBottom"] { display: none !important; }
+iframe[title="streamlitApp"] { display: block !important; }
 </style>
 """, unsafe_allow_html=True)
+
+# 翻訳プロンプト抑制 + Streamlit Cloud の「Created by」「Hosted with Streamlit」を非表示
+st.components.v1.html("""
+<script>
+(function(){
+  function hide(doc) {
+    try {
+      if (!doc) return;
+      var d = doc.documentElement;
+      d.setAttribute('translate', 'no');
+      d.setAttribute('lang', 'ja');
+      d.classList.add('notranslate');
+      var m = doc.querySelector('meta[name="google"]');
+      if (!m) {
+        m = doc.createElement('meta');
+        m.name = 'google';
+        m.content = 'notranslate';
+        doc.head && doc.head.appendChild(m);
+      } else { m.content = 'notranslate'; }
+      var footers = doc.querySelectorAll('footer, [role="contentinfo"], [class*="footer"]');
+      footers.forEach(function(el){ el.style.display='none'; el.style.visibility='hidden'; });
+      var links = doc.querySelectorAll('a[href*="streamlit.app"], a[href*="streamlit.io"]');
+      links.forEach(function(a){
+        var txt = (a.textContent || '').toLowerCase();
+        if (txt.indexOf('hosted with') >= 0 || txt.indexOf('created by') >= 0) {
+          var p = a.parentElement;
+          for (var i = 0; i < 5 && p && p !== doc.body; i++) {
+            p.style.cssText = 'display:none!important;visibility:hidden!important;';
+            p = p.parentElement;
+          }
+        }
+      });
+    } catch(e) {}
+  }
+  hide(document);
+  if (window.parent && window.parent !== window) hide(window.parent.document);
+  setTimeout(function(){ hide(document); if (window.parent) hide(window.parent.document); }, 500);
+  setTimeout(function(){ hide(document); if (window.parent) hide(window.parent.document); }, 2000);
+})();
+</script>
+""", height=0)
 
 # 定数
 MAX_REFERENCE_CASES = 20
@@ -712,7 +759,10 @@ def _compute_valuation_detached(
             if total and total > 0 and land_a and land_a > 0:
                 land_prices_500m.append(total / land_a)
         if land_prices_500m:
-            avg_land_500m = _compute_robust_average(land_prices_500m)
+            avg_land_500m = sum(land_prices_500m) / len(land_prices_500m) # Fallback if robust average removes everything
+            robust_avg = _compute_robust_average(land_prices_500m)
+            if robust_avg is not None:
+                avg_land_500m = robust_avg
 
     # 土地単価算出用データ（2km圏内の「土地」データがあればそれを優先、なければ築25年以上の中古戸建で代替）
     land_prices = []
@@ -1507,49 +1557,49 @@ def _generate_valuation_pdf_minimal(
     return buf.read()
 
 
-    def _generate_valuation_pdf_impl(
-        address: str,
-        property_type: str,
-        area_input: float,
-        building_age: int,
-        valuation: float,
-        avg_unit_price: float,
-        correction: float,
-        adjusted_unit_price: float,
-        transaction_count: int,
-        df_reference: pd.DataFrame,
-        map_df: Optional[pd.DataFrame],
-        price_chart: Optional[Any],
-        **kwargs: Any,
-    ) -> bytes:
-        """査定報告書のPDF本体（横向き・印刷レイアウト最適化）"""
-        from reportlab.lib import colors
-        from reportlab.lib.pagesizes import A4, landscape
-        from reportlab.lib.styles import ParagraphStyle
-        from reportlab.lib.units import mm
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+def _generate_valuation_pdf_impl(
+    address: str,
+    property_type: str,
+    area_input: float,
+    building_age: int,
+    valuation: float,
+    avg_unit_price: float,
+    correction: float,
+    adjusted_unit_price: float,
+    transaction_count: int,
+    df_reference: pd.DataFrame,
+    map_df: Optional[pd.DataFrame],
+    price_chart: Optional[Any],
+    **kwargs: Any,
+) -> bytes:
+    """査定報告書のPDF本体（横向き・印刷レイアウト最適化）"""
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 
-        font_name = _get_reportlab_japanese_font()
-        buf = io.BytesIO()
-        doc = SimpleDocTemplate(buf, pagesize=landscape(A4), rightMargin=8*mm, leftMargin=8*mm, topMargin=10*mm, bottomMargin=10*mm)
-        title_style = ParagraphStyle(name="Title", fontName=font_name, fontSize=16, spaceAfter=8, alignment=1)
-        heading_style = ParagraphStyle(name="Heading", fontName=font_name, fontSize=11, spaceAfter=4)
-        body_style = ParagraphStyle(name="Body", fontName=font_name, fontSize=9)
-        small_style = ParagraphStyle(name="Small", fontName=font_name, fontSize=8, textColor=colors.grey)
+    font_name = _get_reportlab_japanese_font()
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=landscape(A4), rightMargin=8*mm, leftMargin=8*mm, topMargin=10*mm, bottomMargin=10*mm)
+    title_style = ParagraphStyle(name="Title", fontName=font_name, fontSize=16, spaceAfter=8, alignment=1)
+    heading_style = ParagraphStyle(name="Heading", fontName=font_name, fontSize=11, spaceAfter=4)
+    body_style = ParagraphStyle(name="Body", fontName=font_name, fontSize=9)
+    small_style = ParagraphStyle(name="Small", fontName=font_name, fontSize=8, textColor=colors.grey)
 
-        # 横向きA4: 余白縮小で有効幅 281mm（近隣事例リストを横に伸ばす）
-        page_w = 297*mm - 16*mm  # 281mm
+    # 横向きA4: 余白縮小で有効幅 281mm（近隣事例リストを横に伸ばす）
+    page_w = 297*mm - 16*mm  # 281mm
 
-        elements = []
-        elements.append(Paragraph("不動産査定報告書（簡易）", title_style))
-        elements.append(Paragraph(f"作成日: {datetime.now().strftime('%Y年%m月%d日')}", small_style))
-        elements.append(Spacer(1, 8))
+    elements = []
+    elements.append(Paragraph("不動産査定報告書（簡易）", title_style))
+    elements.append(Paragraph(f"作成日: {datetime.now().strftime('%Y年%m月%d日')}", small_style))
+    elements.append(Spacer(1, 8))
 
-        land_a = kwargs.get("land_area_input", area_input if property_type == "土地" else 0)
-        bldg_a = kwargs.get("building_area_input", 0)
-        excl_a = kwargs.get("exclusive_area_input", area_input if property_type == "中古マンション" else 0)
-        
-        avg_land_500m = kwargs.get("avg_land_500m", None)
+    land_a = kwargs.get("land_area_input", area_input if property_type == "土地" else 0)
+    bldg_a = kwargs.get("building_area_input", 0)
+    excl_a = kwargs.get("exclusive_area_input", area_input if property_type == "中古マンション" else 0)
+    
+    avg_land_500m = kwargs.get("avg_land_500m", None)
     if property_type == "土地":
         area_str = f"土地面積: {land_a:.1f}㎡"
     elif property_type == "中古住宅（戸建て）":
@@ -1628,7 +1678,7 @@ def _generate_valuation_pdf_minimal(
     ]))
     left_cell_contents.append(kakuti_table)
 
-    if avg_land_500m is not None:
+    if avg_land_500m is not None and avg_land_500m > 0:
         left_cell_contents.append(Spacer(1, 4))
         left_cell_contents.append(Paragraph("■ 参考情報", heading_style))
         ref_data = [
@@ -1644,6 +1694,8 @@ def _generate_valuation_pdf_minimal(
             ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ]))
         left_cell_contents.append(ref_table)
+    elif avg_land_500m is not None and avg_land_500m == 0:
+        pass # Explicitly handle 0 case if needed
 
     chart_img = _plotly_fig_to_png(price_chart) if price_chart is not None else None
     right_cell_contents = []
@@ -1937,7 +1989,9 @@ if submitted:
                                 csv_2km_land = apply_case_filters(csv_2km_raw, PROPERTY_TYPE_TO_CSV_TYPE.get("土地", []), 0, 50, filter_contract_value)
                             # 500m圏内の土地データを取得
                             csv_500m_raw = filter_csv_by_distance(st.session_state.csv_cases, lat, lon, 500, csv_df=st.session_state.csv_df)
-                            csv_500m_land = apply_case_filters(csv_500m_raw, PROPERTY_TYPE_TO_CSV_TYPE.get("土地", []), 0, 50, filter_contract_value)
+                            # 「土地」データのタイプを取得（通常 ['売地', '土地', '宅地']）
+                            land_types = PROPERTY_TYPE_TO_CSV_TYPE.get("土地", ["売地", "土地", "宅地"])
+                            csv_500m_land = apply_case_filters(csv_500m_raw, land_types, 0, 50, filter_contract_value)
 
                         result = compute_valuation(
                             property_type, avg_unit_price, building_age_correction,
@@ -1952,7 +2006,7 @@ if submitted:
                         valuation = result[0]
                         land_breakdown = result[1]
                         building_breakdown = result[2]
-                        avg_land_500m = result[3]
+                        avg_land_500m = result[3] if len(result) > 3 else None
                         adjusted_unit_price = avg_unit_price * building_age_correction
 
                         st.markdown("---")
@@ -2025,13 +2079,21 @@ if submitted:
                         with col4:
                             st.metric("参考取引件数", f"{csv_count} 件")
                         
-                        if property_type == "中古住宅（戸建て）" and avg_land_500m is not None:
+                        if property_type == "中古住宅（戸建て）" and avg_land_500m is not None and avg_land_500m > 0:
                             st.markdown(
                                 f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; margin-top: 10px; margin-bottom: 10px;">'
                                 f'<strong>💡 参考情報</strong><br>'
                                 f'半径500m以内の成約ベースの土地価格平均値： '
                                 f'<span style="font-size: 1.2rem; font-weight: bold; color: #1f77b4;">{avg_land_500m/10000:,.1f} 万円/㎡</span> '
                                 f'（坪単価: {(avg_land_500m/10000)*M2_TO_TSUBO:,.1f} 万円/坪）'
+                                f'</div>',
+                                unsafe_allow_html=True
+                            )
+                        elif property_type == "中古住宅（戸建て）":
+                            st.markdown(
+                                f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; margin-top: 10px; margin-bottom: 10px;">'
+                                f'<strong>💡 参考情報</strong><br>'
+                                f'半径500m以内の土地取引データがありませんでした。'
                                 f'</div>',
                                 unsafe_allow_html=True
                             )
@@ -2053,15 +2115,18 @@ if submitted:
                             st.dataframe(kakuti_df, use_container_width=True, hide_index=True)
                             st.caption(f"合計画地補正率: {kakuti_rate*100:+.0f}%")
 
-                        latex_f, detail_f = format_valuation_formula(
-                            property_type, valuation, display_avg, building_age_correction,
-                            land_area_input, building_area_input, exclusive_area_input,
-                            kakuti_rate=kakuti_rate,
-                            building_breakdown=building_breakdown if property_type == "中古住宅（戸建て）" else None,
-                            land_breakdown=land_breakdown if property_type == "中古住宅（戸建て）" else None,
-                        )
-                        st.markdown(f"**算出式**: ${latex_f}$")
-                        st.caption(f"※ {detail_f}（参考値です）")
+                        try:
+                            latex_f, detail_f = format_valuation_formula(
+                                property_type, valuation, display_avg, building_age_correction,
+                                land_area_input, building_area_input, exclusive_area_input,
+                                kakuti_rate=kakuti_rate,
+                                building_breakdown=building_breakdown if property_type == "中古住宅（戸建て）" else None,
+                                land_breakdown=land_breakdown if property_type == "中古住宅（戸建て）" else None,
+                            )
+                            st.markdown(f"**算出式**: ${latex_f}$")
+                            st.caption(f"※ {detail_f}（参考値です）")
+                        except Exception as e:
+                            st.caption(f"※ 査定金額：{valuation/10000:,.0f}万円（参考値です）")
 
                         if property_type == "中古住宅（戸建て）" and land_breakdown is not None:
                             suffix = (
@@ -2208,6 +2273,7 @@ elif st.session_state.search_result is not None:
         kakuti_rate = sr.get("kakuti_rate", 0.0)
         corner_check = sr.get("corner_check", False)
         building_age = sr.get("building_age", 0)
+        avg_land_500m = sr.get("avg_land_500m", None)
 
         avg_unit_price, csv_count = compute_avg_unit_price(csv_filtered)
         if avg_unit_price is None or avg_unit_price <= 0:
@@ -2217,6 +2283,7 @@ elif st.session_state.search_result is not None:
             correction = 1.0 if property_type == "土地" else get_building_age_correction_factor(building_age_val)
             adjusted_unit_price = avg_unit_price * correction
             csv_2km_prev = None
+            csv_2km_land_prev = None
             csv_500m_land_prev = None
             if property_type == "中古住宅（戸建て）":
                 csv_raw_prev = st.session_state.get("csv_cases", [])
@@ -2224,9 +2291,11 @@ elif st.session_state.search_result is not None:
                 if building_age_val is not None and building_age_val <= 34:
                     csv_2km_raw = filter_csv_by_distance(csv_raw_prev, lat, lon, 2000, csv_df=csv_df_prev)
                     csv_2km_prev = apply_case_filters(csv_2km_raw, filter_type, 0, 50, "all")
+                    csv_2km_land_prev = apply_case_filters(csv_2km_raw, PROPERTY_TYPE_TO_CSV_TYPE.get("土地", ["売地", "土地", "宅地"]), 0, 50, "all")
                 # 500m圏内の土地データを取得
                 csv_500m_raw = filter_csv_by_distance(csv_raw_prev, lat, lon, 500, csv_df=csv_df_prev)
-                csv_500m_land_prev = apply_case_filters(csv_500m_raw, PROPERTY_TYPE_TO_CSV_TYPE.get("土地", []), 0, 50, "all")
+                land_types = PROPERTY_TYPE_TO_CSV_TYPE.get("土地", ["売地", "土地", "宅地"])
+                csv_500m_land_prev = apply_case_filters(csv_500m_raw, land_types, 0, 50, "all")
 
             result = compute_valuation(
                 property_type, avg_unit_price, correction,
@@ -2235,12 +2304,17 @@ elif st.session_state.search_result is not None:
                 subject_building_age=building_age_val if property_type == "中古住宅（戸建て）" else None,
                 csv_features=csv_filtered if property_type == "中古住宅（戸建て）" else None,
                 csv_features_2km=csv_2km_prev,
+                csv_features_2km_land=csv_2km_land_prev,
                 csv_features_500m_land=csv_500m_land_prev,
             )
             valuation = result[0]
             land_breakdown = result[1]
             building_breakdown = result[2]
-            avg_land_500m = result[3]
+            avg_land_500m_computed = result[3]
+            
+            # Use computed 500m average if available, otherwise fallback to saved state
+            if avg_land_500m_computed is not None:
+                avg_land_500m = avg_land_500m_computed
 
             st.markdown("---")
             st.markdown("### 📊 仮査定結果（前回の検索）")
@@ -2311,13 +2385,21 @@ elif st.session_state.search_result is not None:
             with col4:
                 st.metric("参考取引件数", f"{csv_count} 件")
 
-            if property_type == "中古住宅（戸建て）" and avg_land_500m is not None:
+            if property_type == "中古住宅（戸建て）" and avg_land_500m is not None and avg_land_500m > 0:
                 st.markdown(
                     f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; margin-top: 10px; margin-bottom: 10px;">'
                     f'<strong>💡 参考情報</strong><br>'
                     f'半径500m以内の成約ベースの土地価格平均値： '
                     f'<span style="font-size: 1.2rem; font-weight: bold; color: #1f77b4;">{avg_land_500m/10000:,.1f} 万円/㎡</span> '
                     f'（坪単価: {(avg_land_500m/10000)*M2_TO_TSUBO:,.1f} 万円/坪）'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+            elif property_type == "中古住宅（戸建て）":
+                st.markdown(
+                    f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; margin-top: 10px; margin-bottom: 10px;">'
+                    f'<strong>💡 参考情報</strong><br>'
+                    f'半径500m以内の土地取引データがありませんでした。'
                     f'</div>',
                     unsafe_allow_html=True
                 )
@@ -2337,15 +2419,18 @@ elif st.session_state.search_result is not None:
                 st.dataframe(kakuti_df, use_container_width=True, hide_index=True)
                 st.caption(f"合計画地補正率: {kakuti_rate*100:+.0f}%")
 
-            latex_f, detail_f = format_valuation_formula(
-                property_type, valuation, display_avg_prev, correction,
-                land_a, bldg_a, excl_a,
-                kakuti_rate=kakuti_rate,
-                building_breakdown=building_breakdown if property_type == "中古住宅（戸建て）" else None,
-                land_breakdown=land_breakdown if property_type == "中古住宅（戸建て）" else None,
-            )
-            st.markdown(f"**算出式**: ${latex_f}$")
-            st.caption(f"※ {detail_f}（参考値です）")
+            try:
+                latex_f, detail_f = format_valuation_formula(
+                    property_type, valuation, display_avg_prev, correction,
+                    land_a, bldg_a, excl_a,
+                    kakuti_rate=kakuti_rate,
+                    building_breakdown=building_breakdown if property_type == "中古住宅（戸建て）" else None,
+                    land_breakdown=land_breakdown if property_type == "中古住宅（戸建て）" else None,
+                )
+                st.markdown(f"**算出式**: ${latex_f}$")
+                st.caption(f"※ {detail_f}（参考値です）")
+            except Exception:
+                st.caption(f"※ 査定金額：{valuation/10000:,.0f}万円（参考値です）")
 
             if property_type == "中古住宅（戸建て）" and land_breakdown is not None:
                 suffix_prev = (
