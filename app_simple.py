@@ -1723,13 +1723,24 @@ def _generate_valuation_pdf_impl(
     return buf.read()
 
 import base64
-def get_image_base64(img_path: Path) -> str:
-    """画像をBase64文字列に変換する（HTML埋め込み用）"""
-    if img_path.exists():
-        with open(img_path, "rb") as img_file:
-            return base64.b64encode(img_file.read()).decode()
-    return ""
+from PIL import Image
 
+def get_optimized_image_base64(img_path: Path, width: int = 400) -> str:
+    """画像をリサイズしてBase64文字列に変換する（表示安定化のため）"""
+    if img_path.exists():
+        try:
+            img = Image.open(img_path)
+            # アスペクト比を維持してリサイズ
+            w_percent = (width / float(img.size[0]))
+            h_size = int((float(img.size[1]) * float(w_percent)))
+            img = img.resize((width, h_size), Image.LANCZOS)
+            
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            return base64.b64encode(buf.getvalue()).decode()
+        except Exception:
+            return ""
+    return ""
 
 # ========== UI ==========
 if "search_result" not in st.session_state:
@@ -1758,92 +1769,114 @@ with st.sidebar:
     if n_csv == 0:
         st.warning("data/reins_data_3years.csv が見つかりません。")
 
-# ランディングページ風ヘッダー
-st.markdown("""
+# ランディングページ風ヘッダーの構築
+character_path = Path(__file__).parent / "assets" / "Copilot_20260324_100708.png"
+char_b64 = get_optimized_image_base64(character_path, width=400)
+
+char_html = f'<img src="data:image/png;base64,{char_b64}" style="width: 100%; max-width: 220px;">' if char_b64 else ""
+
+st.markdown(f"""
 <style>
-    @media (max-width: 768px) { div[data-testid="column"] { min-width: 100% !important; } }
+    @media (max-width: 768px) {{ 
+        .hero-flex {{ flex-direction: column !important; text-align: center !important; }}
+        .feature-list {{ margin: 10px auto !important; }}
+    }}
     
-    /* ヒーローエリア全体のコンテナ */
-    .hero-wrapper {
+    .hero-wrapper {{
         background: linear-gradient(135deg, #f0f8ff 0%, #e6f2ff 100%);
         border-radius: 15px;
-        padding: 30px;
+        padding: 25px;
         margin-bottom: 30px;
         border: 1px solid #d1e3f8;
         box-shadow: 0 10px 20px rgba(0,0,0,0.05);
-    }
+        font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+    }}
     
-    .hero-logo {
-        font-size: 28px;
+    .hero-logo {{
+        font-size: 32px;
         font-weight: 900;
-        color: #2c3e50;
-        margin-bottom: 10px;
-    }
-    .hero-logo span {
-        color: #1f77b4;
-        margin-right: 5px;
-    }
-    
-    .hero-title {
-        font-size: 26px;
-        font-weight: 800;
-        color: #1a4f76;
-        line-height: 1.3;
         margin-bottom: 15px;
-    }
-    
-    .hero-subtitle {
-        font-size: 16px;
-        color: #4a6fa5;
-        font-weight: 700;
-        margin-bottom: 25px;
-        background: white;
-        display: inline-block;
-        padding: 5px 15px;
-        border-radius: 50px;
-    }
-
-    .feature-item {
-        font-size: 15px;
-        font-weight: 700;
-        color: #333;
-        margin-bottom: 10px;
         display: flex;
         align-items: center;
-    }
-    .feature-check {
-        color: #28a745;
-        font-size: 20px;
+        color: #2c3e50;
+    }}
+    .hero-logo-k {{
+        background-color: #1f77b4;
+        color: white;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 5px;
         margin-right: 10px;
-    }
-</style>
-""", unsafe_allow_html=True)
+        font-size: 28px;
+    }}
+    
+    .hero-title {{
+        font-size: 24px;
+        font-weight: 800;
+        color: #1a4f76;
+        line-height: 1.4;
+        margin-bottom: 10px;
+    }}
+    
+    .hero-subtitle {{
+        font-size: 15px;
+        color: #4a6fa5;
+        font-weight: 700;
+        margin-bottom: 20px;
+        background: white;
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 50px;
+    }}
 
-# UI構築
-with st.container():
-    st.markdown('<div class="hero-wrapper">', unsafe_allow_html=True)
+    .hero-flex {{
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+    }}
+
+    .feature-list {{
+        text-align: left;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }}
+
+    .feature-item {{
+        font-size: 16px;
+        font-weight: 700;
+        color: #333;
+        display: flex;
+        align-items: center;
+    }}
+    .feature-check {{
+        color: #28a745;
+        font-size: 22px;
+        margin-right: 10px;
+    }}
+</style>
+
+<div class="hero-wrapper">
+    <div class="hero-logo"><div class="hero-logo-k">K</div> 杏栄</div>
+    <div class="hero-title">スマホで最短1分査定！<br>旭川の家の価値、カンタン価格診断</div>
+    <div class="hero-subtitle">最短60秒・匿名OK・営業なしで安心</div>
     
-    # ロゴとタイトルの行
-    st.markdown('<div class="hero-logo"><span>K</span> 杏栄</div>', unsafe_allow_html=True)
-    st.markdown('<div class="hero-title">スマホで最短1分査定！<br>旭川の家の価値、カンタン価格診断</div>', unsafe_allow_html=True)
-    st.markdown('<div class="hero-subtitle">最短60秒・匿名OK・営業なしで安心</div>', unsafe_allow_html=True)
-    
-    # 説明文と画像の2カラムレイアウト
-    col_text, col_img = st.columns([3, 2])
-    
-    with col_text:
-        st.markdown('<div style="margin-top: 20px;">', unsafe_allow_html=True)
-        st.markdown('<div class="feature-item"><span class="feature-check">✅</span> 旭川相場データをAIが自動分析</div>', unsafe_allow_html=True)
-        st.markdown('<div class="feature-item"><span class="feature-check">✅</span> 地域密着の安心サポート</div>', unsafe_allow_html=True)
-        st.markdown('<div class="feature-item"><span class="feature-check">✅</span> 旭川の相場に最適化</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-    with col_img:
-        character_path = Path(__file__).parent / "assets" / "Copilot_20260324_100708.png"
-        if character_path.exists():
-            st.image(str(character_path), use_column_width=True)
-            
-    st.markdown('</div>', unsafe_allow_html=True)
+    <div class="hero-flex">
+        <div class="feature-list">
+            <div class="feature-item"><span class="feature-check">✅</span> 旭川相場データをAIが自動分析</div>
+            <div class="feature-item"><span class="feature-check">✅</span> 地域密着の安心サポート</div>
+            <div class="feature-item"><span class="feature-check">✅</span> 旭川の相場に最適化</div>
+        </div>
+        <div style="flex-shrink: 0; text-align: center;">
+            {char_html}
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 st.markdown("**物件種別**")
 property_type = st.radio(
