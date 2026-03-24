@@ -1841,28 +1841,32 @@ st.markdown("""
 
 # 2. UI構築（標準パーツを使用）
 with st.container():
-    # 外枠の開始
-    st.markdown('<div class="hero-wrapper">', unsafe_allow_html=True)
-    
-    # ロゴ（画像に変更）
+    # 1. ロゴを中央に大きく配置
     logo_path = Path(__file__).parent / "assets" / "company_logo.png"
-    if logo_path.exists():
-        st.image(str(logo_path), width=250)  # サイズを大きく (150 -> 250)
-    else:
-        st.markdown('<div class="hero-logo-box"><div class="hero-logo-k">K</div><div class="hero-logo-text">杏栄</div></div>', unsafe_allow_html=True)
+    col_l1, col_l2, col_l3 = st.columns([1, 4, 1])
+    with col_l2:
+        if logo_path.exists():
+            st.image(str(logo_path), use_column_width=True)
+        else:
+            st.markdown('<div style="text-align: center;"><div class="hero-logo-box" style="justify-content: center;"><div class="hero-logo-k">K</div><div class="hero-logo-text">杏栄</div></div></div>', unsafe_allow_html=True)
+    
+    st.markdown('<div style="margin-top: 20px;"></div>', unsafe_allow_html=True)
+
+    # 2. ヒーローセクション（外枠）
+    st.markdown('<div class="hero-wrapper" style="background: linear-gradient(135deg, #f0faff 0%, #e6f5ff 100%); padding: 35px; border: 2px solid #bde0fe;">', unsafe_allow_html=True)
     
     # キャッチコピー
-    st.markdown('<div class="hero-title" style="font-size: 32px; margin-top: 15px;">スマホで最短1分査定！<br>旭川の家の価値、カンタン価格診断</div>', unsafe_allow_html=True)
-    st.markdown('<div class="hero-subtitle" style="font-size: 18px; padding: 6px 20px;">最短60秒・匿名OK・営業なしで安心</div>', unsafe_allow_html=True)
+    st.markdown('<div class="hero-title" style="font-size: 36px; margin-bottom: 20px; text-align: center;">スマホで最短1分査定！<br>旭川の家の価値、カンタン価格診断</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align: center; margin-bottom: 30px;"><div class="hero-subtitle" style="font-size: 20px; padding: 8px 25px;">最短60秒・匿名OK・営業なしで安心</div></div>', unsafe_allow_html=True)
     
     # 2カラム：特徴と画像
     col_feat, col_char = st.columns([3, 2])
     
     with col_feat:
-        st.markdown('<div style="margin-top: 10px;">', unsafe_allow_html=True)
-        st.markdown('<div class="feature-item" style="font-size: 18px;"><span class="feature-check">✅</span> 旭川相場データをAIが自動分析</div>', unsafe_allow_html=True)
-        st.markdown('<div class="feature-item" style="font-size: 18px;"><span class="feature-check">✅</span> 地域密着の安心サポート</div>', unsafe_allow_html=True)
-        st.markdown('<div class="feature-item" style="font-size: 18px;"><span class="feature-check">✅</span> 旭川の相場に最適化</div>', unsafe_allow_html=True)
+        st.markdown('<div style="margin-top: 20px; padding-left: 20px;">', unsafe_allow_html=True)
+        st.markdown('<div class="feature-item" style="font-size: 20px; margin-bottom: 15px;"><span class="feature-check">✅</span> 旭川相場データをAIが自動分析</div>', unsafe_allow_html=True)
+        st.markdown('<div class="feature-item" style="font-size: 20px; margin-bottom: 15px;"><span class="feature-check">✅</span> 地域密着の安心サポート</div>', unsafe_allow_html=True)
+        st.markdown('<div class="feature-item" style="font-size: 20px; margin-bottom: 15px;"><span class="feature-check">✅</span> 旭川の相場に最適化</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
         
     with col_char:
