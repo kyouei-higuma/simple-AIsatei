@@ -1848,18 +1848,21 @@ def get_b64(path):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
-logo_b64 = get_b64(Path(__file__).parent / "assets" / "company_logo.png")
+# 新しい大きいロゴを使用
+logo_b64 = get_b64(Path(__file__).parent / "assets" / "company_logo_large.png")
+if not logo_b64:
+    logo_b64 = get_b64(Path(__file__).parent / "assets" / "company_logo.png")
 person_b64 = get_b64(Path(__file__).parent / "assets" / "person_only.png")
 
 # ロゴとヒーローセクションを一つのHTMLブロックとして記述（インデント厳禁）
 st.markdown(f"""
 <div style="width: 100%; max-width: 850px; margin: 0 auto; text-align: center; font-family: 'Helvetica Neue', Arial, sans-serif;">
 <div style="margin: 0; padding: 10px 0 0 0; line-height: 0;">
-<img src="data:image/png;base64,{logo_b64}" style="width: 380px; max-width: 95%; height: auto;">
+<img src="data:image/png;base64,{logo_b64}" style="width: 460px; max-width: 98%; height: auto;">
 </div>
 <div style="background: linear-gradient(135deg, #f0faff 0%, #e6f5ff 100%); 
 border-radius: 20px; border: 3px solid #bde0fe; 
-box-shadow: 0 15px 35px rgba(0,0,0,0.08); text-align: left; padding: 25px; margin: -10px 0 0 0; position: relative; overflow: hidden;">
+box-shadow: 0 15px 35px rgba(0,0,0,0.08); text-align: left; padding: 25px; margin: -15px 0 0 0; position: relative; overflow: hidden; z-index: 2;">
 <h1 style="font-size: 32px; color: #1a4f76; margin: 0 0 8px 0; font-weight: 900; line-height: 1.25;">
 スマホで最短1分査定！<br>旭川の家の価値、カンタン価格診断
 </h1>
