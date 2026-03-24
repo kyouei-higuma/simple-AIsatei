@@ -30,18 +30,20 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Streamlitのツールバー・ヘッダー・フッター・下部アイコンを非表示
+# Streamlit全体の余白を極限まで削るCSS
 st.markdown("""
 <style>
-[data-testid="stToolbar"] { display: none !important; }
-[data-testid="stHeader"] { display: none !important; }
-footer { display: none !important; }
-footer [data-testid="stMarkdownContainer"] { display: none !important; }
-.stDeployButton { display: none !important; }
-#stDecoration { display: none !important; }
-[data-testid="stAppViewContainer"] > footer { display: none !important; }
-[data-testid="stBottom"] { display: none !important; }
-iframe[title="streamlitApp"] { display: block !important; }
+/* 1. 全体のコンテナ余白をゼロにする */
+.block-container {
+    padding-top: 0rem !important;
+    padding-bottom: 0rem !important;
+    margin-top: 0 !important;
+}
+/* 2. ツールバーとヘッダーを非表示 */
+[data-testid="stToolbar"], [data-testid="stHeader"], footer { display: none !important; }
+.stDeployButton, #stDecoration { display: none !important; }
+/* 3. 各要素間の下マージンを最小限にする */
+[data-testid="element-container"] { margin-bottom: 0.2rem !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1852,38 +1854,38 @@ person_b64 = get_b64(Path(__file__).parent / "assets" / "person_only.png")
 # ロゴとヒーローセクションを一つのHTMLブロックとして記述（インデント厳禁）
 st.markdown(f"""
 <div style="width: 100%; max-width: 850px; margin: 0 auto; text-align: center; font-family: 'Helvetica Neue', Arial, sans-serif;">
-<div style="margin: 0; padding: 0 0 5px 0;">
-<img src="data:image/png;base64,{logo_b64}" style="width: 420px; max-width: 95%; height: auto;">
+<div style="margin: 0; padding: 10px 0 0 0; line-height: 0;">
+<img src="data:image/png;base64,{logo_b64}" style="width: 380px; max-width: 95%; height: auto;">
 </div>
 <div style="background: linear-gradient(135deg, #f0faff 0%, #e6f5ff 100%); 
 border-radius: 20px; border: 3px solid #bde0fe; 
-box-shadow: 0 15px 35px rgba(0,0,0,0.08); text-align: left; padding: 30px; margin: 0; position: relative; overflow: hidden;">
-<h1 style="font-size: 34px; color: #1a4f76; margin: 0 0 10px 0; font-weight: 900; line-height: 1.3;">
+box-shadow: 0 15px 35px rgba(0,0,0,0.08); text-align: left; padding: 25px; margin: -10px 0 0 0; position: relative; overflow: hidden;">
+<h1 style="font-size: 32px; color: #1a4f76; margin: 0 0 8px 0; font-weight: 900; line-height: 1.25;">
 スマホで最短1分査定！<br>旭川の家の価値、カンタン価格診断
 </h1>
-<div style="background: white; color: #4a6fa5; display: inline-block; padding: 8px 25px; 
-border-radius: 50px; font-weight: 800; font-size: 20px; border: 1.5px solid #d1e3f8; margin-bottom: 25px;">
+<div style="background: white; color: #4a6fa5; display: inline-block; padding: 5px 20px; 
+border-radius: 50px; font-weight: 800; font-size: 19px; border: 1.5px solid #d1e3f8; margin-bottom: 20px;">
 最短60秒・匿名OK・営業なしで安心
 </div>
 <div style="display: flex; justify-content: space-between; align-items: flex-end; position: relative; z-index: 2;">
 <div style="flex: 1;">
-<div style="font-size: 21px; font-weight: 800; color: #2c3e50; margin-bottom: 15px; display: flex; align-items: center;">
-<span style="color: #28a745; margin-right: 15px; font-size: 26px;">✅</span> 旭川相場データをAIが自動分析
+<div style="font-size: 20px; font-weight: 800; color: #2c3e50; margin-bottom: 12px; display: flex; align-items: center;">
+<span style="color: #28a745; margin-right: 12px; font-size: 24px;">✅</span> 旭川相場データをAIが自動分析
 </div>
-<div style="font-size: 21px; font-weight: 800; color: #2c3e50; margin-bottom: 15px; display: flex; align-items: center;">
-<span style="color: #28a745; margin-right: 15px; font-size: 26px;">✅</span> 地域密着の安心サポート
+<div style="font-size: 20px; font-weight: 800; color: #2c3e50; margin-bottom: 12px; display: flex; align-items: center;">
+<span style="color: #28a745; margin-right: 12px; font-size: 24px;">✅</span> 地域密着の安心サポート
 </div>
-<div style="font-size: 21px; font-weight: 800; color: #2c3e50; display: flex; align-items: center;">
-<span style="color: #28a745; margin-right: 15px; font-size: 26px;">✅</span> 旭川の相場に最適化
-</div>
-</div>
-<div style="flex: 0 0 240px; text-align: right; margin-bottom: -32px; margin-right: -15px;">
-<img src="data:image/png;base64,{person_b64}" style="width: 240px; height: auto; display: block;">
+<div style="font-size: 20px; font-weight: 800; color: #2c3e50; display: flex; align-items: center;">
+<span style="color: #28a745; margin-right: 12px; font-size: 24px;">✅</span> 旭川の相場に最適化
 </div>
 </div>
+<div style="flex: 0 0 220px; text-align: right; margin-bottom: -27px; margin-right: -12px;">
+<img src="data:image/png;base64,{person_b64}" style="width: 220px; height: auto; display: block;">
 </div>
 </div>
-<div style="margin-bottom: 40px;"></div>
+</div>
+</div>
+<div style="margin-bottom: 30px;"></div>
 """, unsafe_allow_html=True)
 
 st.markdown("**物件種別**")
