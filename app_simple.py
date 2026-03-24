@@ -1852,7 +1852,6 @@ def get_b64(path):
 logo_b64 = get_b64(Path(__file__).parent / "assets" / "company_logo_large.png")
 if not logo_b64:
     logo_b64 = get_b64(Path(__file__).parent / "assets" / "company_logo.png")
-person_b64 = get_b64(Path(__file__).parent / "assets" / "person_only.png")
 
 # ロゴとヒーローセクションを一つのHTMLブロックとして記述（インデント厳禁）
 st.markdown(f"""
@@ -1870,8 +1869,7 @@ box-shadow: 0 15px 35px rgba(0,0,0,0.08); text-align: left; padding: 25px; margi
 border-radius: 50px; font-weight: 800; font-size: 19px; border: 1.5px solid #d1e3f8; margin-bottom: 20px;">
 最短60秒・匿名OK・営業なしで安心
 </div>
-<div style="display: flex; justify-content: space-between; align-items: flex-end; position: relative; z-index: 2;">
-<div style="flex: 1;">
+<div style="position: relative; z-index: 2;">
 <div style="font-size: 20px; font-weight: 800; color: #2c3e50; margin-bottom: 12px; display: flex; align-items: center;">
 <span style="color: #28a745; margin-right: 12px; font-size: 24px;">✅</span> 旭川相場データをAIが自動分析
 </div>
@@ -1880,10 +1878,6 @@ border-radius: 50px; font-weight: 800; font-size: 19px; border: 1.5px solid #d1e
 </div>
 <div style="font-size: 20px; font-weight: 800; color: #2c3e50; display: flex; align-items: center;">
 <span style="color: #28a745; margin-right: 12px; font-size: 24px;">✅</span> 旭川の相場に最適化
-</div>
-</div>
-<div style="flex: 0 0 220px; text-align: right; margin-bottom: -27px; margin-right: -12px;">
-<img src="data:image/png;base64,{person_b64}" style="width: 220px; height: auto; display: block;">
 </div>
 </div>
 </div>
