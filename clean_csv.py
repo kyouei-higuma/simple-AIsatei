@@ -2,7 +2,7 @@ import pandas as pd
 import re
 import math
 
-file_path = r'c:\Users\MD03\Desktop\不動産仮査定Project\data\reins_data_3years.csv'
+file_path = r'c:\Users\MD03\Desktop\不動産仮査定Project\data\seiyaku_20260321_10year_date.csv'
 
 # CSVを読み込む
 df = pd.read_csv(file_path, encoding='utf-8-sig', on_bad_lines='skip')

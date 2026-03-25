@@ -5,7 +5,7 @@ from pathlib import Path
 
 DATA_DIR = Path(r"c:\Users\MD03\Desktop\不動産仮査定Project\data")
 INPUT_CSV = DATA_DIR / "seiyaku_20260321_10year_date.csv"
-OUTPUT_CSV = DATA_DIR / "reins_data_3years.csv"
+OUTPUT_CSV = DATA_DIR / "seiyaku_20260321_10year_date.csv"
 
 def filter_recent_years():
     print(f"Reading {INPUT_CSV} ...")
