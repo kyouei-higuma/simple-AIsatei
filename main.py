@@ -3,11 +3,15 @@
 data/reins_data.csv のデータのみを使用して検索・査定
 
 住所→緯度経度の変換には 国土地理院API / geopy Nominatim を使用（無料）
+
+周辺地図・成約事例一覧は既定で非表示（app_simple と同等のHP向け挙動）。
+表示する場合は環境変数 STREAMLIT_SHOW_MAP_AND_CASE_LIST=1 または Secrets で true。
 """
 
 import html
 import io
 import math
+import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -33,6 +37,26 @@ st.set_page_config(
 
 # 定数
 MAX_REFERENCE_CASES = 20
+
+
+def _show_main_map_and_case_list() -> bool:
+    """
+    周辺地図・成約事例データフレームの表示。
+    デフォルトは非表示（HP・AI査定と同様。app_simple 誤指定でなく main が動いていても一覧を出さない）。
+    表示する場合は環境変数 STREAMLIT_SHOW_MAP_AND_CASE_LIST=1 または Secrets で true。
+    """
+    env = os.environ.get("STREAMLIT_SHOW_MAP_AND_CASE_LIST", "").strip().lower()
+    if env in ("1", "true", "yes", "on"):
+        return True
+    if env in ("0", "false", "no", "off"):
+        return False
+    try:
+        sec = st.secrets.get("STREAMLIT_SHOW_MAP_AND_CASE_LIST")
+        if sec is not None:
+            return str(sec).strip().lower() in ("1", "true", "yes", "on")
+    except Exception:
+        pass
+    return False
 
 
 def _get_map_zoom_for_radius(radius_km: float) -> int:
@@ -1602,8 +1626,8 @@ with col_right:
     if submitted:
         if not address or not address.strip():
             st.error("住所を入力してください。")
-    elif not st.session_state.csv_cases:
-        st.error("取引データが読み込まれていません。")
+        elif not st.session_state.csv_cases:
+            st.error("取引データが読み込まれていません。")
         else:
             coords = geocode_address(address)
             if coords:
@@ -1808,26 +1832,27 @@ with col_right:
                                 if advice:
                                     st.warning(advice)
 
-                            st.markdown("---")
-                            if len(map_df) > 1:
+                            if _show_main_map_and_case_list():
                                 st.markdown("---")
-                                st.subheader("🗺️ 周辺の取引事例の位置")
-                                try:
-                                    folium_map = build_folium_map(
-                                        lat, lon, csv_filtered, address,
-                                        zoom=_get_map_zoom_for_radius(radius_km)
-                                    )
-                                    from streamlit_folium import folium_static
-                                    st.caption("★=査定対象地　●=成約事例（濃い青=1年以内、薄い青=3年前）　マウスホバーで物件情報表示　左上で住所検索　右上で地図/航空写真切替・全画面表示")
-                                    folium_static(folium_map, width=700, height=500)
-                                except (ImportError, ModuleNotFoundError):
-                                    st.caption("※ folium がインストールされていません。`pip install folium streamlit-folium` で詳細地図を有効にできます。")
-                                    st.map(map_df[["lat", "lon"]], zoom=_get_map_zoom_for_radius(radius_km))
+                                if len(map_df) > 1:
+                                    st.markdown("---")
+                                    st.subheader("🗺️ 周辺の取引事例の位置")
+                                    try:
+                                        folium_map = build_folium_map(
+                                            lat, lon, csv_filtered, address,
+                                            zoom=_get_map_zoom_for_radius(radius_km)
+                                        )
+                                        from streamlit_folium import folium_static
+                                        st.caption("★=査定対象地　●=成約事例（濃い青=1年以内、薄い青=3年前）　マウスホバーで物件情報表示　左上で住所検索　右上で地図/航空写真切替・全画面表示")
+                                        folium_static(folium_map, width=700, height=500)
+                                    except (ImportError, ModuleNotFoundError):
+                                        st.caption("※ folium がインストールされていません。`pip install folium streamlit-folium` で詳細地図を有効にできます。")
+                                        st.map(map_df[["lat", "lon"]], zoom=_get_map_zoom_for_radius(radius_km))
 
-                            st.markdown("---")
-                            st.subheader("📋 周辺の取引事例リスト（詳細11項目）")
-                            st.caption("所在地・成約価格・成約年月日・築年数（成約時）・物件項目・用途地域・土地面積・建物面積・専有面積・接道状況・接道1 を表示")
-                            st.dataframe(df, use_container_width=True, hide_index=True)
+                                st.markdown("---")
+                                st.subheader("📋 周辺の取引事例リスト（詳細11項目）")
+                                st.caption("所在地・成約価格・成約年月日・築年数（成約時）・物件項目・用途地域・土地面積・建物面積・専有面積・接道状況・接道1 を表示")
+                                st.dataframe(df, use_container_width=True, hide_index=True)
 
                             st.session_state.search_result = {
                                 "has_valuation": True,
@@ -2013,21 +2038,22 @@ with col_right:
                     if trend_comment:
                         st.markdown(trend_comment)
 
-                if len(map_df) > 1:
-                    st.markdown("---")
-                    st.subheader("🗺️ 周辺の取引事例の位置")
-                    try:
-                        folium_map = build_folium_map(
-                            lat, lon, csv_filtered, address,
-                            zoom=_get_map_zoom_for_radius(radius_km)
-                        )
-                        from streamlit_folium import folium_static
-                        st.caption("★=査定対象地　●=成約事例　マウスホバーで物件情報表示　左上で住所検索　右上で地図/航空写真切替・全画面表示")
-                        folium_static(folium_map, width=700, height=500)
-                    except (ImportError, ModuleNotFoundError):
-                        st.caption("※ folium がインストールされていません。`pip install folium streamlit-folium` で詳細地図を有効にできます。")
-                        st.map(map_df[["lat", "lon"]], zoom=_get_map_zoom_for_radius(radius_km))
+                if _show_main_map_and_case_list():
+                    if len(map_df) > 1:
+                        st.markdown("---")
+                        st.subheader("🗺️ 周辺の取引事例の位置")
+                        try:
+                            folium_map = build_folium_map(
+                                lat, lon, csv_filtered, address,
+                                zoom=_get_map_zoom_for_radius(radius_km)
+                            )
+                            from streamlit_folium import folium_static
+                            st.caption("★=査定対象地　●=成約事例　マウスホバーで物件情報表示　左上で住所検索　右上で地図/航空写真切替・全画面表示")
+                            folium_static(folium_map, width=700, height=500)
+                        except (ImportError, ModuleNotFoundError):
+                            st.caption("※ folium がインストールされていません。`pip install folium streamlit-folium` で詳細地図を有効にできます。")
+                            st.map(map_df[["lat", "lon"]], zoom=_get_map_zoom_for_radius(radius_km))
 
-                st.markdown("---")
-                st.subheader("📋 周辺の取引事例リスト（詳細11項目）")
-                st.dataframe(df, use_container_width=True, hide_index=True)
+                    st.markdown("---")
+                    st.subheader("📋 周辺の取引事例リスト（詳細11項目）")
+                    st.dataframe(df, use_container_width=True, hide_index=True)
