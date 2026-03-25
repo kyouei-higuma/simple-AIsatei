@@ -1873,13 +1873,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 2. UI構築（インデントなしでMarkdownを記述し、不具合を完全に回避）
-import base64
-def get_b64(path):
-    if not path.exists(): return ""
-    with open(path, "rb") as f:
-        return base64.b64encode(f.read()).decode()
-
 # 2. UI構築（安定性を重視しつつ余白を最小化）
 import base64
 def get_b64(path):
