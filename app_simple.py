@@ -1,7 +1,7 @@
 """
-簡易AI査定アプリ（HP用・軽量版）
-不動産仮査定アプリの簡易版。地図・周辺事例リストは非表示。
-弊社HPからのリンク用に最適化。
+簡易AI査定アプリ（お客様向け・HP用）
+社員向けの本番査定は main.py（地図・成約事例一覧あり＝対面説明用）。
+本ファイルはお客様が手軽に使う版のため、画面上では地図・参照成約事例の一覧は出さない。
 """
 
 import html
@@ -2409,7 +2409,7 @@ elif st.session_state.search_result is not None:
     sr = st.session_state.search_result
     if sr.get("has_valuation"):
         render_valuation_result(sr, is_previous=True)
-        # 参照成約事例テーブル・周辺マップ（st.map）は画面に出さない（HP・AI査定向け）
+        # お客様向け簡易版: 参照成約事例テーブル・周辺マップは出さない（社員向けは main.py）
     else:
         st.info(f"前回の検索: {sr.get('address')} — 査定結果を出せませんでした。")
 

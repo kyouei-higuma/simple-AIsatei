@@ -1,11 +1,14 @@
 """
-不動産仮査定アプリ（CSVデータ版）
+不動産仮査定アプリ（CSVデータ版）— 社員向けメインシステム
 data/reins_data.csv のデータのみを使用して検索・査定
 
 住所→緯度経度の変換には 国土地理院API / geopy Nominatim を使用（無料）
 
-周辺地図・成約事例一覧は既定で非表示（app_simple と同等のHP向け挙動）。
-表示する場合は環境変数 STREAMLIT_SHOW_MAP_AND_CASE_LIST=1 または Secrets で true。
+■ 本ファイル（main.py）: 対面説明用。周辺地図・成約事例一覧を既定で表示する。
+■ お客様向けの簡易版は app_simple.py（地図・事例リストは画面に出さない）。
+
+デプロイは Render 前提ではない。環境に応じて streamlit run で起動するファイルを使い分ける。
+地図・一覧を一時的に隠す場合のみ STREAMLIT_SHOW_MAP_AND_CASE_LIST=0 または Secrets で false。
 """
 
 import html
@@ -41,22 +44,25 @@ MAX_REFERENCE_CASES = 20
 
 def _show_main_map_and_case_list() -> bool:
     """
-    周辺地図・成約事例データフレームの表示。
-    デフォルトは非表示（HP・AI査定と同様。app_simple 誤指定でなく main が動いていても一覧を出さない）。
-    表示する場合は環境変数 STREAMLIT_SHOW_MAP_AND_CASE_LIST=1 または Secrets で true。
+    社員向け main: 周辺地図・成約事例テーブルを既定で表示する（説得・説明用）。
+    非表示にしたいときだけ環境変数 STREAMLIT_SHOW_MAP_AND_CASE_LIST=0 または Secrets で false。
     """
     env = os.environ.get("STREAMLIT_SHOW_MAP_AND_CASE_LIST", "").strip().lower()
-    if env in ("1", "true", "yes", "on"):
-        return True
     if env in ("0", "false", "no", "off"):
         return False
+    if env in ("1", "true", "yes", "on"):
+        return True
     try:
         sec = st.secrets.get("STREAMLIT_SHOW_MAP_AND_CASE_LIST")
         if sec is not None:
-            return str(sec).strip().lower() in ("1", "true", "yes", "on")
+            s = str(sec).strip().lower()
+            if s in ("0", "false", "no", "off"):
+                return False
+            if s in ("1", "true", "yes", "on"):
+                return True
     except Exception:
         pass
-    return False
+    return True
 
 
 def _get_map_zoom_for_radius(radius_km: float) -> int:
