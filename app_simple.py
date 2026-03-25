@@ -1865,7 +1865,9 @@ with st.container():
         if logo_path.exists():
             st.image(str(logo_path), use_column_width=True)
         else:
-            st.markdown('<h3 style="text-align:center;">株式会社 杏栄</h3>', unsafe_allow_html=True)
+            st.markdown('<h3 style="text-align:center; margin-bottom: 0;">株式会社 杏栄</h3>', unsafe_allow_html=True)
+        # 準備中の表示（安定稼働まで）
+        st.markdown('<p style="text-align:center; color: #ff0000; font-weight: bold; font-size: 20px; margin-top: -5px; margin-bottom: 10px;">準備中</p>', unsafe_allow_html=True)
 
 # ヒーローセクション（余白を詰め、安定したHTMLで記述）
 st.markdown("""
