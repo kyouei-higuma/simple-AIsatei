@@ -19,7 +19,7 @@ import numpy as np
 
 # data/ フォルダのパス（過去3年分のデータを優先）
 DATA_DIR = Path(__file__).resolve().parent / "data"
-CSV_PATH_3YEARS = DATA_DIR / "reins_data_3years.csv"
+CSV_PATH_3YEARS = DATA_DIR / "seiyaku_20260321_10year_date.csv"
 CSV_PATH_LEGACY = DATA_DIR / "reins_data.csv"
 
 # ページ設定
@@ -391,31 +391,8 @@ def _parse_construction_date(cy_val: Any) -> Optional[datetime]:
 
 
 def _ensure_reins_data_3years() -> Path:
-    """reins_data_3years.csv がなければ reins_data.csv から生成"""
+    """取引事例CSVパスの取得"""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    if CSV_PATH_3YEARS.exists():
-        return CSV_PATH_3YEARS
-    if not CSV_PATH_LEGACY.exists():
-        return CSV_PATH_3YEARS
-    import random
-    random.seed(42)
-    try:
-        df = pd.read_csv(CSV_PATH_LEGACY, encoding="utf-8")
-    except Exception:
-        df = pd.read_csv(CSV_PATH_LEGACY, encoding="cp932")
-    construction_years = []
-    for _, row in df.iterrows():
-        dt = _parse_date_ymd(row.get("contract_date"))
-        t = str(row.get("type", ""))
-        if dt is None or "売地" in t:
-            construction_years.append("")
-            continue
-        age = random.randint(5, 32)
-        cy = datetime(dt.year - age, dt.month, 1)
-        construction_years.append(f"{cy.year}/{cy.month:02d}")
-    df["construction_year"] = construction_years
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    df.to_csv(CSV_PATH_3YEARS, index=False, encoding="utf-8")
     return CSV_PATH_3YEARS
 
 
@@ -435,7 +412,8 @@ def _is_valid_coord(val: Any) -> bool:
 @st.cache_data
 def load_data(csv_path: str, csv_mtime: float) -> Tuple[List[Dict[str, Any]], pd.DataFrame]:
     """
-    reins_data_3years.csv を読み込み、築年数計算・クレンジングを行う。
+    """
+    CSVデータを読み込み、築年数計算・クレンジングを行う。
     latitude/longitude 列があれば座標を再利用（API呼び出しなし）。
     戻り値: (cases, df) - dfは座標保存用に保持
     """
@@ -624,7 +602,7 @@ def apply_case_filters(
     """
     事例を物件種別・築年数・成約時期でフィルタ。
     type_selected: 空なら全種別、指定ありならその種別のみ
-    contract_period: "1year" | "2years" | "all"
+    contract_period: "1year" | "2years" | "3years" | "all"
     """
     now = datetime.now()
     filtered = []
@@ -654,6 +632,10 @@ def apply_case_filters(
             elif contract_period == "2years":
                 two_years_ago = datetime(now.year - 2, now.month, now.day)
                 if dt < two_years_ago:
+                    continue
+            elif contract_period == "3years":
+                three_years_ago = datetime(now.year - 3, now.month, now.day)
+                if dt < three_years_ago:
                     continue
         filtered.append(f)
     return filtered
@@ -1767,9 +1749,9 @@ except Exception:
 with st.sidebar:
     st.markdown("### 📄 データソース")
     n_csv = len(st.session_state.csv_cases)
-    st.info(f"**CSV（過去3年分）**: {n_csv} 件")
+    st.info(f"**取引データ**: {n_csv} 件")
     if n_csv == 0:
-        st.warning("data/reins_data_3years.csv が見つかりません。")
+        st.warning("CSVファイルが見つかりません。")
 
 # ランディングページ風ヘッダーの構築
 character_path = Path(__file__).parent / "assets" / "Copilot_20260324_100708.png"
@@ -2024,7 +2006,7 @@ if submitted:
     elif not address or not address.strip():
         st.error("住所を入力してください。")
     elif not st.session_state.csv_cases:
-        st.error("data/reins_data_3years.csv が読み込まれていません。")
+        st.error("取引データが読み込まれていません。")
     else:
         # 面積入力の確定
         if property_type == "土地":
@@ -2063,7 +2045,7 @@ if submitted:
                 filter_age_max = min(50, age_center + 5)
                 if age_center == 0:
                     filter_age_min, filter_age_max = 0, 10
-                filter_contract_value = "all"
+                filter_contract_value = "3years"
                 csv_filtered = apply_case_filters(csv_features, filter_type, filter_age_min, filter_age_max, filter_contract_value)
                 total_count = len(csv_features)
                 
@@ -2341,7 +2323,7 @@ elif st.session_state.search_result is not None:
     filter_age_max = min(50, age_center + 5)
     if age_center == 0:
         filter_age_min, filter_age_max = 0, 10
-    filter_contract_value = "all"
+    filter_contract_value = "3years"
     csv_filtered = apply_case_filters(csv_features, filter_type, filter_age_min, filter_age_max, filter_contract_value)
     total_count = len(csv_features)
 
@@ -2374,12 +2356,12 @@ elif st.session_state.search_result is not None:
                 csv_df_prev = st.session_state.get("csv_df")
                 if building_age_val is not None and building_age_val <= 34:
                     csv_2km_raw = filter_csv_by_distance(csv_raw_prev, lat, lon, 2000, csv_df=csv_df_prev)
-                    csv_2km_prev = apply_case_filters(csv_2km_raw, filter_type, 0, 50, "all")
-                    csv_2km_land_prev = apply_case_filters(csv_2km_raw, PROPERTY_TYPE_TO_CSV_TYPE.get("土地", ["売地", "土地", "宅地"]), 0, 50, "all")
+                    csv_2km_prev = apply_case_filters(csv_2km_raw, filter_type, 0, 50, "3years")
+                    csv_2km_land_prev = apply_case_filters(csv_2km_raw, PROPERTY_TYPE_TO_CSV_TYPE.get("土地", ["売地", "土地", "宅地"]), 0, 50, "3years")
                 # 500m圏内の土地データを取得
                 csv_500m_raw = filter_csv_by_distance(csv_raw_prev, lat, lon, 500, csv_df=csv_df_prev)
                 land_types = PROPERTY_TYPE_TO_CSV_TYPE.get("土地", ["売地", "土地", "宅地"])
-                csv_500m_land_prev = apply_case_filters(csv_500m_raw, land_types, 0, 50, "all")
+                csv_500m_land_prev = apply_case_filters(csv_500m_raw, land_types, 0, 50, "3years")
 
             result = compute_valuation(
                 property_type, avg_unit_price, correction,
