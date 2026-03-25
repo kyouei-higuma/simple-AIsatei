@@ -1861,40 +1861,40 @@ if not logo_path.exists():
     logo_path = Path(__file__).parent / "assets" / "company_logo.png"
 
 with st.container():
-    col_l1, col_l2, col_l3 = st.columns([1, 3, 1])
+    col_l1, col_l2, col_l3 = st.columns([2, 2, 2])
     with col_l2:
         if logo_path.exists():
             st.image(str(logo_path), use_column_width=True)
         else:
-            st.markdown('<h2 style="text-align:center;">株式会社 杏栄</h2>', unsafe_allow_html=True)
+            st.markdown('<h3 style="text-align:center;">株式会社 杏栄</h3>', unsafe_allow_html=True)
 
 # ヒーローセクション（余白を詰め、安定したHTMLで記述）
 st.markdown("""
-<div style="width: 100%; max-width: 850px; margin: -20px auto 0 auto; font-family: 'Helvetica Neue', Arial, sans-serif;">
+<div style="width: 100%; max-width: 800px; margin: -10px auto 0 auto; font-family: 'Helvetica Neue', Arial, sans-serif;">
 <div style="background: linear-gradient(135deg, #f0faff 0%, #e6f5ff 100%); 
-border-radius: 20px; border: 3px solid #bde0fe; 
-box-shadow: 0 15px 35px rgba(0,0,0,0.08); text-align: center; padding: 30px; position: relative; overflow: hidden;">
-<h1 style="font-size: 32px; color: #1a4f76; margin: 0 0 10px 0; font-weight: 900; line-height: 1.3;">
+border-radius: 15px; border: 2px solid #bde0fe; 
+box-shadow: 0 10px 25px rgba(0,0,0,0.06); text-align: center; padding: 20px; position: relative; overflow: hidden;">
+<h1 style="font-size: 24px; color: #1a4f76; margin: 0 0 8px 0; font-weight: 800; line-height: 1.3;">
 スマホで最短1分査定！<br>旭川の家の価値、カンタン価格診断
 </h1>
-<div style="background: white; color: #4a6fa5; display: inline-block; padding: 6px 22px; 
-border-radius: 50px; font-weight: 800; font-size: 19px; border: 1.5px solid #d1e3f8; margin-bottom: 25px;">
+<div style="background: white; color: #4a6fa5; display: inline-block; padding: 4px 18px; 
+border-radius: 50px; font-weight: 800; font-size: 16px; border: 1.2px solid #d1e3f8; margin-bottom: 20px;">
 最短60秒・匿名OK・営業なしで安心
 </div>
-<div style="max-width: 500px; margin: 0 auto; text-align: left;">
-<div style="font-size: 19px; font-weight: 800; color: #2c3e50; margin-bottom: 12px; display: flex; align-items: center;">
-<span style="color: #28a745; margin-right: 12px; font-size: 24px;">✅</span> 旭川相場データをAIが自動分析
+<div style="max-width: 420px; margin: 0 auto; text-align: left;">
+<div style="font-size: 16px; font-weight: 800; color: #2c3e50; margin-bottom: 10px; display: flex; align-items: center;">
+<span style="color: #28a745; margin-right: 10px; font-size: 20px;">✅</span> 旭川相場データをAIが自動分析
 </div>
-<div style="font-size: 19px; font-weight: 800; color: #2c3e50; margin-bottom: 12px; display: flex; align-items: center;">
-<span style="color: #28a745; margin-right: 12px; font-size: 24px;">✅</span> 地域密着の安心サポート
+<div style="font-size: 16px; font-weight: 800; color: #2c3e50; margin-bottom: 10px; display: flex; align-items: center;">
+<span style="color: #28a745; margin-right: 10px; font-size: 20px;">✅</span> 地域密着の安心サポート
 </div>
-<div style="font-size: 19px; font-weight: 800; color: #2c3e50; display: flex; align-items: center;">
-<span style="color: #28a745; margin-right: 12px; font-size: 24px;">✅</span> 旭川の相場に最適化
-</div>
-</div>
+<div style="font-size: 16px; font-weight: 800; color: #2c3e50; display: flex; align-items: center;">
+<span style="color: #28a745; margin-right: 10px; font-size: 20px;">✅</span> 旭川の相場に最適化
 </div>
 </div>
-<div style="margin-bottom: 30px;"></div>
+</div>
+</div>
+<div style="margin-bottom: 25px;"></div>
 """, unsafe_allow_html=True)
 
 st.markdown("**物件種別**")
