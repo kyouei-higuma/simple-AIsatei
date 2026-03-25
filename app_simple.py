@@ -432,91 +432,116 @@ def _is_valid_coord(val: Any) -> bool:
 def load_data(csv_path: str, csv_mtime: float) -> Tuple[List[Dict[str, Any]], pd.DataFrame]:
     """
     CSVデータを読み込み、築年数計算・クレンジングを行う。
-    latitude/longitude 列があれば座標を再利用（API呼び出しなし）。
-    戻り値: (cases, df) - dfは座標保存用に保持
+    BOM対策や列名のゆらぎ吸収を強化。
     """
     if not csv_path or csv_mtime <= 0:
         return [], pd.DataFrame()
     path = Path(csv_path)
     if not path.exists():
         return [], pd.DataFrame()
-    try:
-        df = pd.read_csv(path, encoding="utf-8")
-    except Exception:
+    
+    df = None
+    encodings = ["utf-8-sig", "utf-8", "cp932"]
+    for enc in encodings:
         try:
-            df = pd.read_csv(path, encoding="cp932")
+            df = pd.read_csv(path, encoding=enc)
+            break
         except Exception:
-            return [], pd.DataFrame()
+            continue
+            
+    if df is None or df.empty:
+        return [], pd.DataFrame()
+
+    # 列名のクリーニング（BOM除去、空白除去）
+    df.columns = [str(c).strip().replace('\ufeff', '') for c in df.columns]
+    
     if "latitude" not in df.columns:
         df["latitude"] = np.nan
     if "longitude" not in df.columns:
         df["longitude"] = np.nan
+        
     cases = []
     for idx, row in df.iterrows():
-        addr = str(row.get("address", row.get("所在地", ""))).strip()
-        if not addr:
+        case = _load_case_from_row(row, df.columns, idx)
+        if not case.get("所在地"):
             continue
+        
         lat = row.get("latitude")
         lon = row.get("longitude")
-        has_coords = _is_valid_coord(lat) and _is_valid_coord(lon)
-        case = _load_case_from_row(row, df.columns, idx)
-        if has_coords:
+        if _is_valid_coord(lat) and _is_valid_coord(lon):
             case["lat"] = float(lat)
             case["lon"] = float(lon)
+            
         case["_df_index"] = idx
         cases.append(case)
+        
     return cases, df
 
 
 def _load_case_from_row(row: pd.Series, columns: Any, df_index: int) -> Dict[str, Any]:
-    """DataFrameの1行からcase辞書を構築"""
-    has_construction_year = "construction_year" in columns
-    # カラム名のゆらぎを吸収
-    addr = str(row.get("address", row.get("所在地", ""))).strip()
+    """DataFrameの1行からcase辞書を構築（列名の柔軟なマッチング）"""
+    # 列名の対応マップ
+    col_map = {
+        "address": ["address", "所在地", "住所"],
+        "price": ["contract_price", "price", "成約価格", "成約価格_円", "価格"],
+        "date": ["contract_date", "成約日", "成約年月日", "point_in_time_name_ja"],
+        "type": ["type", "物件項目", "物件種別", "floor_plan_name_ja"],
+        "zoning": ["zoning", "用途地域"],
+        "land_area": ["land_area", "土地面積", "土地面積_数値", "u_area_ja"],
+        "building_area": ["building_area", "建物面積", "建物面積_数値", "u_building_total_floor_area_ja"],
+        "floor_area": ["floor_area", "専有面積", "専有面積_数値", "u_area_ja"],
+        "const_year": ["construction_year", "築年数", "建築年", "建築年月", "u_construction_year_ja"],
+        "floor_plan": ["floor_plan", "間取り"],
+        "road_status": ["road_status", "接道状況"],
+        "road_width": ["road_width", "接道幅", "接道1", "road_width_m"]
+    }
     
-    # priceはcontract_price（成約価格）を優先
-    price_raw = row.get("contract_price") if pd.notna(row.get("contract_price")) else row.get("price")
-    if pd.isna(price_raw):
-        # どちらも取れない場合は成約価格（日本語）も試す
-        price_raw = row.get("成約価格")
-    
+    def get_val(keys):
+        for k in keys:
+            if k in columns and pd.notna(row[k]):
+                return row[k]
+        return None
+
+    addr = str(get_val(col_map["address"]) or "").strip()
+    price_raw = get_val(col_map["price"])
     price = _parse_price_man(price_raw)
     
-    date_raw = row.get("contract_date", row.get("成約日", row.get("成約年月日", "")))
+    date_raw = get_val(col_map["date"])
     contract_dt = _parse_date_ymd(date_raw)
     
-    construction_dt = None
+    # 建築年月/築年数の処理
     age_at_contract = None
-    if has_construction_year:
-        construction_dt = _parse_construction_date(row.get("construction_year"))
+    const_val = get_val(col_map["const_year"])
+    construction_dt = _parse_construction_date(const_val)
+    
     if contract_dt and construction_dt:
         delta = contract_dt - construction_dt
         age_at_contract = max(0, delta.days / 365.25)
-    elif contract_dt and pd.notna(row.get("築年数")):
-        # CSVに築年数が直接入っている場合のフォールバック（もしあれば）
+    elif pd.notna(const_val):
+        # 数値（築年数そのもの）が入っている場合の処理
         try:
-            age_at_contract = float(row.get("築年数"))
+            val = float(str(const_val).replace("年", "").strip())
+            if val < 150: # 築年数として妥当な数字なら採用
+                age_at_contract = val
         except:
             pass
         
-    zoning_raw = str(row.get("zoning", row.get("用途地域", "")))
+    zoning_raw = str(get_val(col_map["zoning"]) or "")
     if " / " in zoning_raw:
         zoning_raw = zoning_raw.split(" / ")[-1]
         
-    obj_type = str(row.get("type", row.get("物件項目", row.get("物件種別", ""))))
-        
     return {
-        "所在地": addr,
+        "所在地": addr if addr and addr.lower() not in ("nan", "none") else None,
         "成約価格_円": price,
-        "成約年月日": str(date_raw),
-        "物件項目": obj_type,
+        "成約年月日": str(date_raw or ""),
+        "物件項目": str(get_val(col_map["type"]) or ""),
         "用途地域": zoning_raw,
-        "土地面積_数値": _parse_area_to_sqm(row.get("land_area", row.get("土地面積"))) if pd.notna(row.get("land_area", row.get("土地面積"))) else None,
-        "建物面積_数値": _parse_area_to_sqm(row.get("building_area", row.get("建物面積"))) if pd.notna(row.get("building_area", row.get("建物面積"))) else None,
-        "専有面積_数値": _parse_area_to_sqm(row.get("floor_area", row.get("専有面積"))) if pd.notna(row.get("floor_area", row.get("専有面積"))) else None,
-        "間取り": str(row.get("floor_plan", row.get("間取り", ""))) if pd.notna(row.get("floor_plan", row.get("間取り"))) else None,
-        "接道状況": str(row.get("road_status", row.get("接道状況", ""))) if pd.notna(row.get("road_status", row.get("接道状況"))) else None,
-        "接道1": str(row.get("road_width", row.get("接道1", ""))) if pd.notna(row.get("road_width", row.get("接道1"))) else None,
+        "土地面積_数値": _parse_area_to_sqm(get_val(col_map["land_area"])),
+        "建物面積_数値": _parse_area_to_sqm(get_val(col_map["building_area"])),
+        "専有面積_数値": _parse_area_to_sqm(get_val(col_map["floor_area"])),
+        "間取り": str(get_val(col_map["floor_plan"]) or ""),
+        "接道状況": str(get_val(col_map["road_status"]) or ""),
+        "接道1": str(get_val(col_map["road_width"]) or ""),
         "築年数_成約時": age_at_contract,
     }
 
