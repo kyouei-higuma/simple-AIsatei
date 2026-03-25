@@ -2013,19 +2013,6 @@ with st.form("search_form"):
     submitted = st.form_submit_button("査定を実行")
 
 if submitted:
-    if property_type == "土地":
-        area_input = land_area_input
-    elif property_type == "中古住宅（戸建て）":
-        area_input = land_area_input + building_area_input
-    else:
-        area_input = exclusive_area_input
-
-if st.button("結果をクリア"):
-    st.session_state.search_result = None
-    st.rerun()
-
-# 結果表示エリア
-if submitted:
     if not contact_name or not contact_name.strip():
         st.error("お名前（必須）を入力してください。")
     elif not contact_phone or not contact_phone.strip():
@@ -2039,6 +2026,14 @@ if submitted:
     elif not st.session_state.csv_cases:
         st.error("data/reins_data_3years.csv が読み込まれていません。")
     else:
+        # 面積入力の確定
+        if property_type == "土地":
+            area_input = land_area_input
+        elif property_type == "中古住宅（戸建て）":
+            area_input = land_area_input + building_area_input
+        else:
+            area_input = exclusive_area_input
+
         coords = geocode_address(address)
         if coords:
             lat, lon = coords
@@ -2047,9 +2042,6 @@ if submitted:
             search_radius_m = float(radius_km) * 1000
             csv_raw = st.session_state.get("csv_cases", [])
             csv_df = st.session_state.get("csv_df")
-            needs_geocode = any(c.get("lat") is None or c.get("lon") is None for c in csv_raw)
-            if needs_geocode:
-                st.info("新しい住所の座標を取得してCSVに保存しています... 次回からはこの処理はスキップされます")
             csv_features = filter_csv_by_distance(csv_raw, lat, lon, search_radius_m, csv_df=csv_df)
 
             if not csv_features:
@@ -2074,6 +2066,7 @@ if submitted:
                 filter_contract_value = "all"
                 csv_filtered = apply_case_filters(csv_features, filter_type, filter_age_min, filter_age_max, filter_contract_value)
                 total_count = len(csv_features)
+                
                 if not csv_filtered:
                     st.warning("条件に合う事例が見つかりません。フィルターを緩めてください。")
                     st.session_state.search_result = {
@@ -2108,6 +2101,7 @@ if submitted:
                         building_age_correction = 1.0 if property_type == "土地" else get_building_age_correction_factor(building_age_val)
                         corner_rate = get_corner_correction_rate(corner_check)
                         kakuti_rate = corner_rate
+                        
                         csv_2km = None
                         csv_2km_land = None
                         csv_500m_land = None
@@ -2116,9 +2110,9 @@ if submitted:
                                 csv_2km_raw = filter_csv_by_distance(st.session_state.csv_cases, lat, lon, 2000, csv_df=st.session_state.csv_df)
                                 csv_2km = apply_case_filters(csv_2km_raw, filter_type, 0, 50, filter_contract_value)
                                 csv_2km_land = apply_case_filters(csv_2km_raw, PROPERTY_TYPE_TO_CSV_TYPE.get("土地", []), 0, 50, filter_contract_value)
+                            
                             # 500m圏内の土地データを取得
                             csv_500m_raw = filter_csv_by_distance(st.session_state.csv_cases, lat, lon, 500, csv_df=st.session_state.csv_df)
-                            # 「土地」データのタイプを取得（通常 ['売地', '土地', '宅地']）
                             land_types = PROPERTY_TYPE_TO_CSV_TYPE.get("土地", ["売地", "土地", "宅地"])
                             csv_500m_land = apply_case_filters(csv_500m_raw, land_types, 0, 50, filter_contract_value)
 
@@ -2132,6 +2126,7 @@ if submitted:
                             csv_features_2km_land=csv_2km_land,
                             csv_features_500m_land=csv_500m_land,
                         )
+                        
                         valuation = result[0]
                         land_breakdown = result[1]
                         building_breakdown = result[2]
@@ -2145,10 +2140,11 @@ if submitted:
                             f'仮査定金額：<span style="font-size: 3rem;">{valuation/10000:,.0f}</span> 万円</p>',
                             unsafe_allow_html=True
                         )
+                        
                         price_chart = build_price_trend_chart(csv_filtered)
                         map_df = build_map_dataframe(lat, lon, csv_filtered)
-                        df = build_csv_reference_table(csv_filtered, limit=MAX_REFERENCE_CASES)
                         df_pdf = build_csv_reference_table(csv_filtered, limit=MAX_REFERENCE_CASES, for_pdf=True)
+                        
                         pdf_bytes = None
                         try:
                             pdf_bytes = generate_valuation_pdf(
@@ -2176,6 +2172,7 @@ if submitted:
                         except Exception as e:
                             st.warning(f"PDF生成中にエラーが発生しました: {e}")
                             pdf_bytes = b""
+                            
                         if pdf_bytes:
                             st.download_button(
                                 label="📄 査定書をPDFでダウンロード",
@@ -2185,10 +2182,8 @@ if submitted:
                                 type="primary",
                                 key="pdf_download",
                             )
-                        else:
-                            st.info("PDFの生成に失敗しました。reportlab が正しくインストールされているか確認してください。")
-                        # 土地の場合は成約ベースから20%上乗せで表示。
-                        # 中古戸建の場合はそのまま（上乗せなし）
+                        
+                        # 単価表示の計算
                         if property_type == "中古住宅（戸建て）" and land_breakdown is not None:
                             display_avg = (land_breakdown / land_area_input) / (1.0 + kakuti_rate) if land_area_input > 0 else 0
                             display_adj = display_avg
@@ -2196,6 +2191,7 @@ if submitted:
                             _apply_markup = property_type == "土地"
                             display_avg = (avg_unit_price * LAND_MARKUP_RATE) if _apply_markup else avg_unit_price
                             display_adj = (adjusted_unit_price * LAND_MARKUP_RATE) if _apply_markup else adjusted_unit_price
+                        
                         col1, col2, col3, col4 = st.columns(4)
                         with col1:
                             tsubo_avg = (display_avg / 10000) * M2_TO_TSUBO
@@ -2218,31 +2214,11 @@ if submitted:
                                 f'</div>',
                                 unsafe_allow_html=True
                             )
-                        elif property_type == "中古住宅（戸建て）":
-                            st.markdown(
-                                f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; margin-top: 10px; margin-bottom: 10px;">'
-                                f'<strong>💡 参考情報</strong><br>'
-                                f'半径500m以内の土地取引データがありませんでした。'
-                                f'</div>',
-                                unsafe_allow_html=True
-                            )
 
                         count_msg = f"{total_count}件中 {csv_count}件を表示中" if total_count != csv_count else f"{csv_count}件"
                         st.caption(f"※ 半径{radius_km}㎞の、過去3年の成約事例データを参考にしています。（{count_msg}）")
                         if property_type == "土地":
                             st.caption("※ 成約ベースの価格から、㎡単価・坪単価に20%を上乗せしています。")
-
-                        if kakuti_rate != 0:
-                            st.markdown("**補正内訳（画地補正）**")
-                            kakuti_rows = [
-                                ("角地・準角地", corner_rate, f"{corner_rate*100:+.0f}%"),
-                            ]
-                            kakuti_df = pd.DataFrame(
-                                [(n, r) for n, _, r in kakuti_rows],
-                                columns=["項目", "補正率"]
-                            )
-                            st.dataframe(kakuti_df, use_container_width=True, hide_index=True)
-                            st.caption(f"合計画地補正率: {kakuti_rate*100:+.0f}%")
 
                         try:
                             latex_f, detail_f = format_valuation_formula(
@@ -2254,7 +2230,7 @@ if submitted:
                             )
                             st.markdown(f"**算出式**: ${latex_f}$")
                             st.caption(f"※ {detail_f}（参考値です）")
-                        except Exception as e:
+                        except Exception:
                             st.caption(f"※ 査定金額：{valuation/10000:,.0f}万円（参考値です）")
 
                         if property_type == "中古住宅（戸建て）" and land_breakdown is not None:
@@ -2274,27 +2250,43 @@ if submitted:
 
                         st.subheader("📈 価格トレンドグラフ")
                         if price_chart is not None:
-                            st.plotly_chart(
-                                price_chart,
-                                use_container_width=True,
-                                config=dict(
-                                    displayModeBar=False,
-                                    responsive=True,
-                                    displaylogo=False,
-                                    scrollZoom=False,
-                                    staticPlot=True,
-                                ),
-                            )
+                            st.plotly_chart(price_chart, use_container_width=True)
                             trend_comment = get_price_trend_analysis(csv_filtered)
                             if trend_comment:
                                 st.markdown(trend_comment)
 
                         if property_type == "中古住宅（戸建て）":
-                            advice = get_depreciation_advice(building_age_val if building_age_val else None, property_type)
+                            advice = get_depreciation_advice(building_age_val, property_type)
                             if advice:
                                 st.warning(advice)
 
-                        # お客様情報・査定結果を自動転送
+                        # セッション状態の更新
+                        st.session_state.search_result = {
+                            "has_valuation": True,
+                            "address": address,
+                            "lat": lat,
+                            "lon": lon,
+                            "property_type": property_type,
+                            "radius_km": radius_km,
+                            "csv_features": csv_features,
+                            "csv_count": csv_count,
+                            "valuation": valuation,
+                            "avg_unit_price": avg_unit_price,
+                            "correction": building_age_correction,
+                            "adjusted_unit_price": adjusted_unit_price,
+                            "kakuti_rate": kakuti_rate,
+                            "corner_check": corner_check,
+                            "land_area_input": land_area_input,
+                            "building_area_input": building_area_input,
+                            "exclusive_area_input": exclusive_area_input,
+                            "building_age": building_age,
+                            "area_input": area_input,
+                            "building_breakdown": building_breakdown if property_type == "中古住宅（戸建て）" else None,
+                            "land_breakdown": land_breakdown if property_type == "中古住宅（戸建て）" else None,
+                            "avg_land_500m": avg_land_500m if property_type == "中古住宅（戸建て）" else None,
+                        }
+
+                        # Webhook通知
                         payload = {
                             "送信日時": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                             "お客様情報": {
@@ -2320,19 +2312,7 @@ if submitted:
                                 "参照事例数": csv_count,
                             },
                         }
-                        ok, err = send_inquiry_to_webhook(payload)
-                        if ok:
-                            st.toast("お客様情報を送信しました。", icon="✅")
-                        elif _get_webhook_url():
-                            msg = f"送信に失敗しました。{err}" if err else "送信に失敗しました。"
-                            st.error(msg)
-                            with st.expander("🔧 トラブルシューティング"):
-                                st.markdown("""
-                                - **WEBHOOK_URL** が正しく設定されているか確認してください
-                                - Google Chat の Webhook URL は `https://chat.googleapis.com/v1/spaces/...` で始まります
-                                - Streamlit Cloud: Settings → Secrets で設定後、アプリが再起動するまで数十秒かかります
-                                - ローカル: `.streamlit/secrets.toml` に `WEBHOOK_URL = "URL"` の形式で記載
-                                """)
+                        send_inquiry_to_webhook(payload)
 
                         st.markdown("---")
                         st.markdown(
@@ -2345,31 +2325,6 @@ if submitted:
                             '</p>',
                             unsafe_allow_html=True,
                         )
-
-                        st.session_state.search_result = {
-                            "has_valuation": True,
-                            "address": address,
-                            "lat": lat,
-                            "lon": lon,
-                            "property_type": property_type,
-                            "radius_km": radius_km,
-                            "csv_features": csv_features,
-                            "csv_count": csv_count,
-                            "valuation": valuation,
-                            "avg_unit_price": avg_unit_price,
-                            "correction": building_age_correction,
-                            "adjusted_unit_price": adjusted_unit_price,
-                            "kakuti_rate": kakuti_rate,
-                            "corner_check": corner_check,
-                            "land_area_input": land_area_input,
-                            "building_area_input": building_area_input,
-                            "exclusive_area_input": exclusive_area_input,
-                            "building_age": building_age,
-                            "area_input": area_input,
-                            "building_breakdown": building_breakdown if property_type == "中古住宅（戸建て）" else None,
-                            "land_breakdown": land_breakdown if property_type == "中古住宅（戸建て）" else None,
-                            "avg_land_500m": avg_land_500m if property_type == "中古住宅（戸建て）" else None,
-                        }
 
 elif st.session_state.search_result is not None:
     sr = st.session_state.search_result
