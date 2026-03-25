@@ -69,7 +69,9 @@ streamlit run app_simple.py
 
 ### 「Created by」「Hosted with Streamlit」を非表示にするには
 
-Streamlit Community Cloud（無料）では、これらのブランディングを非表示にできません。**セルフホスティング**で解消できます。手順は [docs/セルフホスティング手順.md](docs/セルフホスティング手順.md) を参照してください（Render・Railway・Docker 対応）。
+Streamlit Community Cloud（無料）では、これらのブランディングを非表示にできません。**セルフホスティング**で解消できます。
+- **Render（無料枠）**: 詳細は [docs/Renderデプロイ手順_詳細.md](docs/Renderデプロイ手順_詳細.md)
+- その他: [docs/セルフホスティング手順.md](docs/セルフホスティング手順.md)（Railway・Docker）
 
 ### お客様情報の自動転送（app_simple.py）
 
