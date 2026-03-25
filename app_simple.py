@@ -1848,35 +1848,47 @@ def get_b64(path):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
-# 新しい大きいロゴを使用
-logo_b64 = get_b64(Path(__file__).parent / "assets" / "company_logo_large.png")
-if not logo_b64:
-    logo_b64 = get_b64(Path(__file__).parent / "assets" / "company_logo.png")
+# 2. UI構築（安定性を重視しつつ余白を最小化）
+import base64
+def get_b64(path):
+    if not path.exists(): return ""
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
 
-# ロゴとヒーローセクションを一つのHTMLブロックとして記述（インデント厳禁）
-st.markdown(f"""
-<div style="width: 100%; max-width: 850px; margin: 0 auto; text-align: center; font-family: 'Helvetica Neue', Arial, sans-serif;">
-<div style="margin: 0; padding: 10px 0 0 0; line-height: 0;">
-<img src="data:image/png;base64,{logo_b64}" style="width: 460px; max-width: 98%; height: auto;">
-</div>
+# ロゴは標準機能で表示（巨大なBase64によるクラッシュを回避）
+logo_path = Path(__file__).parent / "assets" / "company_logo_large.png"
+if not logo_path.exists():
+    logo_path = Path(__file__).parent / "assets" / "company_logo.png"
+
+with st.container():
+    col_l1, col_l2, col_l3 = st.columns([1, 3, 1])
+    with col_l2:
+        if logo_path.exists():
+            st.image(str(logo_path), use_column_width=True)
+        else:
+            st.markdown('<h2 style="text-align:center;">株式会社 杏栄</h2>', unsafe_allow_html=True)
+
+# ヒーローセクション（余白を詰め、安定したHTMLで記述）
+st.markdown("""
+<div style="width: 100%; max-width: 850px; margin: -20px auto 0 auto; font-family: 'Helvetica Neue', Arial, sans-serif;">
 <div style="background: linear-gradient(135deg, #f0faff 0%, #e6f5ff 100%); 
 border-radius: 20px; border: 3px solid #bde0fe; 
-box-shadow: 0 15px 35px rgba(0,0,0,0.08); text-align: left; padding: 25px; margin: -15px 0 0 0; position: relative; overflow: hidden; z-index: 2;">
-<h1 style="font-size: 32px; color: #1a4f76; margin: 0 0 8px 0; font-weight: 900; line-height: 1.25;">
+box-shadow: 0 15px 35px rgba(0,0,0,0.08); text-align: center; padding: 30px; position: relative; overflow: hidden;">
+<h1 style="font-size: 32px; color: #1a4f76; margin: 0 0 10px 0; font-weight: 900; line-height: 1.3;">
 スマホで最短1分査定！<br>旭川の家の価値、カンタン価格診断
 </h1>
-<div style="background: white; color: #4a6fa5; display: inline-block; padding: 5px 20px; 
-border-radius: 50px; font-weight: 800; font-size: 19px; border: 1.5px solid #d1e3f8; margin-bottom: 20px;">
+<div style="background: white; color: #4a6fa5; display: inline-block; padding: 6px 22px; 
+border-radius: 50px; font-weight: 800; font-size: 19px; border: 1.5px solid #d1e3f8; margin-bottom: 25px;">
 最短60秒・匿名OK・営業なしで安心
 </div>
-<div style="position: relative; z-index: 2;">
-<div style="font-size: 20px; font-weight: 800; color: #2c3e50; margin-bottom: 12px; display: flex; align-items: center;">
+<div style="max-width: 500px; margin: 0 auto; text-align: left;">
+<div style="font-size: 19px; font-weight: 800; color: #2c3e50; margin-bottom: 12px; display: flex; align-items: center;">
 <span style="color: #28a745; margin-right: 12px; font-size: 24px;">✅</span> 旭川相場データをAIが自動分析
 </div>
-<div style="font-size: 20px; font-weight: 800; color: #2c3e50; margin-bottom: 12px; display: flex; align-items: center;">
+<div style="font-size: 19px; font-weight: 800; color: #2c3e50; margin-bottom: 12px; display: flex; align-items: center;">
 <span style="color: #28a745; margin-right: 12px; font-size: 24px;">✅</span> 地域密着の安心サポート
 </div>
-<div style="font-size: 20px; font-weight: 800; color: #2c3e50; display: flex; align-items: center;">
+<div style="font-size: 19px; font-weight: 800; color: #2c3e50; display: flex; align-items: center;">
 <span style="color: #28a745; margin-right: 12px; font-size: 24px;">✅</span> 旭川の相場に最適化
 </div>
 </div>
