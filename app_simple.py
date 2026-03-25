@@ -412,7 +412,6 @@ def _is_valid_coord(val: Any) -> bool:
 @st.cache_data
 def load_data(csv_path: str, csv_mtime: float) -> Tuple[List[Dict[str, Any]], pd.DataFrame]:
     """
-    """
     CSVデータを読み込み、築年数計算・クレンジングを行う。
     latitude/longitude 列があれば座標を再利用（API呼び出しなし）。
     戻り値: (cases, df) - dfは座標保存用に保持
