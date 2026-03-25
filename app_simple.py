@@ -1736,16 +1736,22 @@ if "csv_df" not in st.session_state:
 # 起動時にCSVを読み込み（latitude/longitude があれば座標計算スキップ）
 try:
     csv_path = _ensure_reins_data_3years()
+    if not csv_path.exists():
+        st.error(f"CSVファイルが存在しません: {csv_path.absolute()}")
+        # フォルダ内のファイルを確認
+        if csv_path.parent.exists():
+            files = list(csv_path.parent.glob("*.csv"))
+            st.info(f"dataフォルダ内のCSVファイル: {[f.name for f in files]}")
+        else:
+            st.error("dataフォルダ自体が存在しません。")
+    
     csv_mtime = csv_path.stat().st_mtime if csv_path.exists() else 0.0
     with st.spinner("データの解析中..."):
         cases, csv_df = load_data(str(csv_path), csv_mtime)
         st.session_state.csv_cases = cases
         st.session_state.csv_df = csv_df
-        if not cases:
-            if not csv_path.exists():
-                st.error(f"CSVファイルが見つかりません: {csv_path}")
-            else:
-                st.error(f"CSVファイルの読み込み件数が0件です: {csv_path}")
+        if not cases and csv_path.exists():
+            st.error(f"CSVファイルの読み込み件数が0件です: {csv_path.name}")
 except Exception as e:
     st.error(f"データ読み込み中にエラーが発生しました: {e}")
     st.session_state.csv_cases = []
