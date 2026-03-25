@@ -1737,11 +1737,17 @@ if "csv_df" not in st.session_state:
 try:
     csv_path = _ensure_reins_data_3years()
     csv_mtime = csv_path.stat().st_mtime if csv_path.exists() else 0.0
-    with st.spinner("3年分のデータを解析中...（初回のみ時間がかかります）"):
+    with st.spinner("データの解析中..."):
         cases, csv_df = load_data(str(csv_path), csv_mtime)
         st.session_state.csv_cases = cases
         st.session_state.csv_df = csv_df
-except Exception:
+        if not cases:
+            if not csv_path.exists():
+                st.error(f"CSVファイルが見つかりません: {csv_path}")
+            else:
+                st.error(f"CSVファイルの読み込み件数が0件です: {csv_path}")
+except Exception as e:
+    st.error(f"データ読み込み中にエラーが発生しました: {e}")
     st.session_state.csv_cases = []
     st.session_state.csv_df = pd.DataFrame()
 
