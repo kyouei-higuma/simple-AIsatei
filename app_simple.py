@@ -170,8 +170,8 @@ def send_inquiry_to_webhook(payload: Dict[str, Any]) -> Tuple[bool, Optional[str
 # 物件種別 → CSVの物件項目（同様事例の絞り込み用）
 PROPERTY_TYPE_TO_CSV_TYPE = {
     "土地": ["売地", "土地", "宅地"],
-    "中古住宅（戸建て）": ["中古戸建", "既存住宅"],
-    "中古マンション": ["中古マンション", "既存ＭＳ"],
+    "中古住宅（戸建て）": ["中古戸建", "既存住宅", "中古住宅", "一戸建"],
+    "中古マンション": ["中古マンション", "既存ＭＳ", "マンション", "既存マンション"],
 }
 
 
@@ -287,15 +287,22 @@ def parse_numeric(value, suffixes: Tuple[str, ...] = (",", " ", "円", "/m²", "
 
 def _parse_area_to_sqm(value: Any) -> Optional[float]:
     """面積を㎡の数値に変換"""
-    if pd.isna(value):
+    if pd.isna(value) or value is None:
         return None
     if isinstance(value, (int, float)):
         return float(value)
-    s = str(value).replace(",", "").replace(" ", "").replace("㎡", "").replace("m²", "")
+    s = str(value).replace(",", "").replace(" ", "").replace("㎡", "").replace("m²", "").strip()
+    if not s: return None
+    
+    # "30.5坪" のような表記に対応
+    is_tsubo = "坪" in s
     m = re.search(r"([\d\.]+)", s)
     if m:
         try:
-            return float(m.group(1))
+            val = float(m.group(1))
+            if is_tsubo:
+                val = val / 0.3025  # 坪を㎡に変換（1坪 ≒ 3.30578㎡）
+            return val
         except ValueError:
             return None
     return None
@@ -303,17 +310,29 @@ def _parse_area_to_sqm(value: Any) -> Optional[float]:
 
 def _parse_price_man(value: Any) -> Optional[int]:
     """価格文字列（例: '320万円'）を数値に変換"""
-    if pd.isna(value):
+    if pd.isna(value) or value is None:
         return None
     if isinstance(value, (int, float)):
-        return int(value)
+        # 数値の場合は、1億以下なら万円単位とみなすロジックがあったが、
+        # 新しいCSVは生の円単位（14,000,000など）なので、
+        # 10万以上なら円、10万未満なら万円とみなす
+        v = float(value)
+        if v >= 100000:
+            return int(v)
+        return int(v * 10000)
+    
     s = str(value).replace(",", "").strip()
+    if not s: return None
+    
     is_man = "万円" in s or "万" in s
     m = re.search(r"([\d\.]+)", s)
     if m:
         try:
             val = float(m.group(1))
             if is_man:
+                val *= 10000
+            elif val < 100000:
+                # 単位がなく、かつ数値が小さい場合は万円単位と推測
                 val *= 10000
             return int(val)
         except ValueError:
@@ -452,37 +471,52 @@ def load_data(csv_path: str, csv_mtime: float) -> Tuple[List[Dict[str, Any]], pd
 def _load_case_from_row(row: pd.Series, columns: Any, df_index: int) -> Dict[str, Any]:
     """DataFrameの1行からcase辞書を構築"""
     has_construction_year = "construction_year" in columns
+    # カラム名のゆらぎを吸収
     addr = str(row.get("address", row.get("所在地", ""))).strip()
     
     # priceはcontract_price（成約価格）を優先
     price_raw = row.get("contract_price") if pd.notna(row.get("contract_price")) else row.get("price")
+    if pd.isna(price_raw):
+        # どちらも取れない場合は成約価格（日本語）も試す
+        price_raw = row.get("成約価格")
+    
     price = _parse_price_man(price_raw)
     
-    contract_dt = _parse_date_ymd(row.get("contract_date", row.get("成約日", "")))
+    date_raw = row.get("contract_date", row.get("成約日", row.get("成約年月日", "")))
+    contract_dt = _parse_date_ymd(date_raw)
+    
     construction_dt = None
     age_at_contract = None
     if has_construction_year:
         construction_dt = _parse_construction_date(row.get("construction_year"))
     if contract_dt and construction_dt:
         delta = contract_dt - construction_dt
-        age_at_contract = max(0, delta.days / 365)
+        age_at_contract = max(0, delta.days / 365.25)
+    elif contract_dt and pd.notna(row.get("築年数")):
+        # CSVに築年数が直接入っている場合のフォールバック（もしあれば）
+        try:
+            age_at_contract = float(row.get("築年数"))
+        except:
+            pass
         
     zoning_raw = str(row.get("zoning", row.get("用途地域", "")))
     if " / " in zoning_raw:
         zoning_raw = zoning_raw.split(" / ")[-1]
         
+    obj_type = str(row.get("type", row.get("物件項目", row.get("物件種別", ""))))
+        
     return {
         "所在地": addr,
         "成約価格_円": price,
-        "成約年月日": str(row.get("contract_date", row.get("成約日", ""))),
-        "物件項目": str(row.get("type", row.get("物件項目", ""))),
+        "成約年月日": str(date_raw),
+        "物件項目": obj_type,
         "用途地域": zoning_raw,
-        "土地面積_数値": _parse_area_to_sqm(row.get("land_area")) if pd.notna(row.get("land_area")) else None,
-        "建物面積_数値": _parse_area_to_sqm(row.get("building_area")) if pd.notna(row.get("building_area")) else None,
-        "専有面積_数値": _parse_area_to_sqm(row.get("floor_area")) if pd.notna(row.get("floor_area")) else None,
-        "間取り": str(row.get("floor_plan", "")) if pd.notna(row.get("floor_plan")) else None,
-        "接道状況": str(row.get("road_status", row.get("接道状況", ""))) if pd.notna(row.get("road_status")) else None,
-        "接道1": str(row.get("road_width", row.get("接道1", ""))) if pd.notna(row.get("road_width")) else None,
+        "土地面積_数値": _parse_area_to_sqm(row.get("land_area", row.get("土地面積"))) if pd.notna(row.get("land_area", row.get("土地面積"))) else None,
+        "建物面積_数値": _parse_area_to_sqm(row.get("building_area", row.get("建物面積"))) if pd.notna(row.get("building_area", row.get("建物面積"))) else None,
+        "専有面積_数値": _parse_area_to_sqm(row.get("floor_area", row.get("専有面積"))) if pd.notna(row.get("floor_area", row.get("専有面積"))) else None,
+        "間取り": str(row.get("floor_plan", row.get("間取り", ""))) if pd.notna(row.get("floor_plan", row.get("間取り"))) else None,
+        "接道状況": str(row.get("road_status", row.get("接道状況", ""))) if pd.notna(row.get("road_status", row.get("接道状況"))) else None,
+        "接道1": str(row.get("road_width", row.get("接道1", ""))) if pd.notna(row.get("road_width", row.get("接道1"))) else None,
         "築年数_成約時": age_at_contract,
     }
 
@@ -1726,49 +1760,48 @@ def get_optimized_image_base64(img_path: Path, width: int = 400) -> str:
     return ""
 
 # ========== UI ==========
+# 状態の初期化
 if "search_result" not in st.session_state:
     st.session_state.search_result = None
 if "csv_cases" not in st.session_state:
     st.session_state.csv_cases = []
 if "csv_df" not in st.session_state:
     st.session_state.csv_df = pd.DataFrame()
+if "initial_load_done" not in st.session_state:
+    st.session_state.initial_load_done = False
 
-# 起動時にCSVを読み込み（latitude/longitude があれば座標計算スキップ）
-try:
-    csv_path = _ensure_reins_data_3years()
-    if not csv_path.exists():
-        st.error(f"CSVファイルが存在しません: {csv_path.absolute()}")
-        # フォルダ内のファイルを確認
-        if csv_path.parent.exists():
-            files = list(csv_path.parent.glob("*.csv"))
-            st.info(f"dataフォルダ内のCSVファイル: {[f.name for f in files]}")
+# 起動時に一度だけCSVを読み込み（latitude/longitude があれば座標計算スキップ）
+if not st.session_state.initial_load_done:
+    try:
+        csv_path = _ensure_reins_data_3years()
+        if not csv_path.exists():
+            st.error(f"CSVファイルが存在しません: {csv_path.absolute()}")
         else:
-            st.error("dataフォルダ自体が存在しません。")
-    
-    csv_mtime = csv_path.stat().st_mtime if csv_path.exists() else 0.0
-    with st.spinner("データの解析中..."):
-        cases, csv_df = load_data(str(csv_path), csv_mtime)
-        st.session_state.csv_cases = cases
-        st.session_state.csv_df = csv_df
-        if not cases and csv_path.exists():
-            st.error(f"CSVファイルの読み込み件数が0件です: {csv_path.name}")
-            # カラム名を表示してデバッグ
-            try:
-                temp_df = pd.read_csv(csv_path, nrows=0, encoding="utf-8")
-                st.info(f"CSVのカラム名: {list(temp_df.columns)}")
-            except Exception:
-                pass
-except Exception as e:
-    st.error(f"データ読み込み中にエラーが発生しました: {e}")
-    st.session_state.csv_cases = []
-    st.session_state.csv_df = pd.DataFrame()
+            csv_mtime = csv_path.stat().st_mtime
+            with st.spinner("データの解析中..."):
+                cases, csv_df = load_data(str(csv_path), csv_mtime)
+                # 有効なデータのみに絞り込み
+                cases = [c for c in cases if (c.get("成約価格_円") or 0) > 0]
+                st.session_state.csv_cases = cases
+                st.session_state.csv_df = csv_df
+                st.session_state.initial_load_done = True
+                if not cases:
+                    st.error(f"CSVファイルの有効データが0件です: {csv_path.name}")
+    except Exception as e:
+        st.error(f"データ読み込み中にエラーが発生しました: {e}")
+        st.session_state.csv_cases = []
+        st.session_state.csv_df = pd.DataFrame()
 
 with st.sidebar:
     st.markdown("### 📄 データソース")
     n_csv = len(st.session_state.csv_cases)
     st.info(f"**取引データ**: {n_csv} 件")
     if n_csv == 0:
-        st.warning("CSVファイルが見つかりません。")
+        st.warning("CSVファイルから有効なデータが読み込まれていません。")
+    if st.button("キャッシュクリア・再読み込み"):
+        st.session_state.initial_load_done = False
+        st.cache_data.clear()
+        st.rerun()
 
 # ランディングページ風ヘッダーの構築
 character_path = Path(__file__).parent / "assets" / "Copilot_20260324_100708.png"
