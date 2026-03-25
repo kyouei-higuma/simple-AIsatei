@@ -1752,6 +1752,12 @@ try:
         st.session_state.csv_df = csv_df
         if not cases and csv_path.exists():
             st.error(f"CSVファイルの読み込み件数が0件です: {csv_path.name}")
+            # カラム名を表示してデバッグ
+            try:
+                temp_df = pd.read_csv(csv_path, nrows=0, encoding="utf-8")
+                st.info(f"CSVのカラム名: {list(temp_df.columns)}")
+            except Exception:
+                pass
 except Exception as e:
     st.error(f"データ読み込み中にエラーが発生しました: {e}")
     st.session_state.csv_cases = []
