@@ -82,6 +82,8 @@ st.components.v1.html("""
 MAX_REFERENCE_CASES = 20
 M2_TO_TSUBO = 3.30578  # 1坪 = 3.30578㎡（坪単価換算用）
 LAND_MARKUP_RATE = 1.20  # 土地単価の20%上乗せ（成約ベースの補正）
+# 建物付き土地等で平均より著しく低い成約総額を単価算出から除外（円）
+LAND_UNDERPRICE_VS_MEAN_YEN = 2_000_000
 
 # Webhook転送用（環境変数 WEBHOOK_URL または Streamlit Secrets で設定）
 def _get_webhook_url() -> Optional[str]:
@@ -120,9 +122,14 @@ def _format_payload_for_google_chat(payload: Dict[str, Any]) -> Dict[str, str]:
         f"*■ 査定結果*",
         f"仮査定金額: *{result.get('仮査定金額（万円）', '-')}万円*",
         f"坪単価: *{result.get('坪単価の平均（万円/坪）', '-')}万円/坪*（㎡: {result.get('㎡単価の平均（万円/㎡）', '-')}万円/㎡） / 参照: {result.get('参照事例数', '-')}件",
+    ]
+    z = result.get("土地ボリュームゾーン")
+    if z:
+        lines.append(f"土地ボリュームゾーン: {z}")
+    lines.extend([
         f"",
         f"送信日時: {payload.get('送信日時', '-')}",
-    ]
+    ])
     return {"text": "\n".join(lines)}
 
 
@@ -851,16 +858,23 @@ def compute_valuation(
     csv_features_2km: Optional[List[Dict]] = None,
     csv_features_2km_land: Optional[List[Dict]] = None,
     csv_features_500m_land: Optional[List[Dict]] = None,
-) -> Tuple[float, Optional[float], Optional[float], Optional[float]]:
+    land_volume_zone_caption: Optional[str] = None,
+) -> Tuple[float, Optional[float], Optional[float], Optional[float], Optional[str]]:
     """
     種別に応じた査定金額を算出。
     中古戸建は「土地単価×土地面積×画地補正＋建物評価額」で計算。
-    戻り値: (査定額, 土地価格, 建物評価額, 参考500m土地単価)
+    戻り値: (査定額, 土地価格, 建物評価額, 参考500m土地単価, 土地ボリュームゾーン説明)
     """
     if property_type == "土地":
         avg_with_markup = avg_unit_price * LAND_MARKUP_RATE
         land_val = land_area * avg_with_markup
-        return land_val * (1.0 + kakuti_rate), land_val * (1.0 + kakuti_rate), None, None
+        return (
+            land_val * (1.0 + kakuti_rate),
+            land_val * (1.0 + kakuti_rate),
+            None,
+            None,
+            land_volume_zone_caption,
+        )
     elif property_type == "中古住宅（戸建て）" and csv_features is not None:
         result = _compute_valuation_detached(
             csv_features, land_area, subject_building_age, kakuti_rate,
@@ -875,8 +889,8 @@ def compute_valuation(
     bldg_val = building_area * avg_unit_price * building_age_correction if property_type == "中古住宅（戸建て）" else 0
     base = land_val + (bldg_val if property_type == "中古住宅（戸建て）" else exclusive_area * avg_unit_price * building_age_correction)
     if property_type == "中古住宅（戸建て）":
-        return base * (1.0 + kakuti_rate), land_val * (1.0 + kakuti_rate), bldg_val * (1.0 + kakuti_rate), None
-    return base * (1.0 + kakuti_rate), None, None, None
+        return base * (1.0 + kakuti_rate), land_val * (1.0 + kakuti_rate), bldg_val * (1.0 + kakuti_rate), None, None
+    return base * (1.0 + kakuti_rate), None, None, None, None
 
 
 def _compute_valuation_detached(
@@ -888,40 +902,27 @@ def _compute_valuation_detached(
     csv_features_2km_land: Optional[List[Dict]] = None,
     avg_unit_price: Optional[float] = None,
     csv_features_500m_land: Optional[List[Dict]] = None,
-) -> Optional[Tuple[float, float, float, Optional[float]]]:
+) -> Optional[Tuple[float, float, float, Optional[float], Optional[str]]]:
     """
     中古戸建の査定：
     ・昭和56年以前（築44年以上）: 建物評価0（リフォームされていても）
     ・築35年以上: 建物基本評価0、リフォーム等で変動
     ・築34年以下: 土地2km・売買価格差額で建物評価（土地の上乗せは廃止）
+    土地㎡単価は成約総額フィルタ＋坪単価ボリュームゾーン平均を使用。
     """
-    # 500m圏内の土地単価算出（参考値用）
-    avg_land_500m = None
+    # 500m圏内の土地単価（参考・同じロジックで集約）
+    avg_land_500m: Optional[float] = None
     if csv_features_500m_land:
-        land_prices_500m = []
-        for f in csv_features_500m_land:
-            p = f.get("properties", {})
-            total = parse_numeric(p.get("u_transaction_price_total_ja"))
-            land_a = parse_numeric(p.get("土地面積_数値")) or parse_numeric(p.get("u_area_ja"))
-            if total and total > 0 and land_a and land_a > 0:
-                land_prices_500m.append(total / land_a)
-        if land_prices_500m:
-            avg_land_500m = sum(land_prices_500m) / len(land_prices_500m) # Fallback if robust average removes everything
-            robust_avg = _compute_robust_average(land_prices_500m)
-            if robust_avg is not None:
-                avg_land_500m = robust_avg
+        pairs_500m = _collect_land_transaction_pairs(csv_features_500m_land)
+        if pairs_500m:
+            avg_land_500m, _, _ = _land_volume_zone_avg_from_pairs(pairs_500m)
 
-    # 土地単価算出用データ（2km圏内の「土地」データがあればそれを優先、なければ築25年以上の中古戸建で代替）
-    land_prices = []
+    # 土地単価用ペア（2km「土地」優先 → 築25年以上戸建 → フォールバック）
+    land_pairs: List[Tuple[float, float]] = []
     if csv_features_2km_land and subject_building_age is not None and subject_building_age <= 34:
-        for f in csv_features_2km_land:
-            p = f.get("properties", {})
-            total = parse_numeric(p.get("u_transaction_price_total_ja"))
-            land_a = parse_numeric(p.get("土地面積_数値")) or parse_numeric(p.get("u_area_ja"))
-            if total and total > 0 and land_a and land_a > 0:
-                land_prices.append(total / land_a)
+        land_pairs.extend(_collect_land_transaction_pairs(csv_features_2km_land))
 
-    if not land_prices:
+    if not land_pairs:
         land_data = csv_features_2km if (csv_features_2km and subject_building_age is not None and subject_building_age <= 34) else csv_features
         for f in land_data:
             p = f.get("properties", {})
@@ -932,32 +933,26 @@ def _compute_valuation_detached(
             if not total or total <= 0 or not land_a or land_a <= 0:
                 continue
             if age_f is not None and age_f >= 25:
-                land_prices.append(total / land_a)
+                land_pairs.append((float(total), float(total) / float(land_a)))
 
-    if not land_prices:
-        # 代替処理：築浅も含めた単価を出す
+    if not land_pairs:
         fallback_data = csv_features_2km_land if csv_features_2km_land else (csv_features_2km if csv_features_2km else csv_features)
-        for f in fallback_data:
-            p = f.get("properties", {})
-            total = parse_numeric(p.get("u_transaction_price_total_ja"))
-            land_a = parse_numeric(p.get("土地面積_数値")) or parse_numeric(p.get("u_area_ja"))
-            if total and total > 0 and land_a and land_a > 0:
-                land_prices.append(total / land_a)
+        land_pairs.extend(_collect_land_transaction_pairs(fallback_data))
 
-    if not land_prices:
+    if not land_pairs:
         return None
-    avg_land = _compute_robust_average(land_prices)
+    avg_land, land_zone_caption, _ = _land_volume_zone_avg_from_pairs(land_pairs)
     if avg_land is None:
         return None
     land_value_base = land_area * avg_land * (1.0 + kakuti_rate)
 
     # 昭和56年以前（築44年以上）: 建物評価0
     if subject_building_age is not None and subject_building_age >= 44:
-        return land_value_base, land_value_base, 0, avg_land_500m
+        return land_value_base, land_value_base, 0, avg_land_500m, land_zone_caption
 
     # 築35年以上: 建物基本評価0
     if subject_building_age is None or subject_building_age >= 35:
-        return land_value_base, land_value_base, 0, avg_land_500m
+        return land_value_base, land_value_base, 0, avg_land_500m, land_zone_caption
 
     # 築34年以下: 2km圏内土地単価から算出した土地価格 + (売買価格 - 土地価格)の平均
     if csv_features_2km and subject_building_age is not None and subject_building_age <= 34:
@@ -981,15 +976,15 @@ def _compute_valuation_detached(
             if avg_building is None:
                 avg_building = 0
             land_value = land_value_base
-            return land_value + avg_building, land_value, avg_building, avg_land_500m
+            return land_value + avg_building, land_value, avg_building, avg_land_500m, land_zone_caption
 
     # フォールバック: 従来ロジック（築20年以下は残価率、築25年以上は0）
     if subject_building_age is None or subject_building_age >= 25:
-        return land_value_base, land_value_base, 0, avg_land_500m
+        return land_value_base, land_value_base, 0, avg_land_500m, land_zone_caption
     residual = get_building_residual_rate_20y(float(subject_building_age))
     building_value = STANDARD_NEW_BUILDING_PRICE * residual
     land_value = land_value_base
-    return land_value + building_value, land_value, building_value, avg_land_500m
+    return land_value + building_value, land_value, building_value, avg_land_500m, land_zone_caption
 
 
 def format_valuation_formula(
@@ -1228,6 +1223,61 @@ def _compute_robust_average(values: List[float]) -> Optional[float]:
     if not filtered:
         return sum(values) / len(values)
     return sum(filtered) / len(filtered)
+
+
+def _collect_land_transaction_pairs(csv_features: List[Dict]) -> List[Tuple[float, float]]:
+    """各事例の (成約総額[円], 土地㎡単価[円/㎡]) を収集（土地面積ベース）。"""
+    pairs: List[Tuple[float, float]] = []
+    for f in csv_features:
+        p = f.get("properties", {})
+        total = parse_numeric(p.get("u_transaction_price_total_ja"))
+        land_a = parse_numeric(p.get("土地面積_数値")) or parse_numeric(p.get("u_area_ja"))
+        if total and land_a and land_a > 0:
+            pairs.append((float(total), float(total) / float(land_a)))
+    return pairs
+
+
+def _land_volume_zone_avg_from_pairs(
+    pairs: List[Tuple[float, float]],
+) -> Tuple[Optional[float], Optional[str], int]:
+    """
+    土地成約の (総額, ㎡単価) から代表㎡単価を算出する。
+    1) 成約総額が「平均総額 − 200万円」未満の事例を除外
+    2) 坪単価の 25〜75% 帯をボリュームゾーンとし、帯内の坪単価平均を㎡単価に換算
+    戻り値: (代表㎡単価[円/㎡], 画面表示用キャプション, ②の帯に使った件数)
+    """
+    if not pairs:
+        return None, None, 0
+    totals = np.array([t for t, _ in pairs], dtype=float)
+    mean_tot = float(np.mean(totals))
+    cut = LAND_UNDERPRICE_VS_MEAN_YEN
+    filtered = [(t, u) for t, u in pairs if t >= mean_tot - cut]
+    if not filtered:
+        filtered = list(pairs)
+    tsubo_rows: List[Tuple[float, float, float]] = []
+    for t, u in filtered:
+        tsubo_man = (u / 10000.0) * M2_TO_TSUBO
+        tsubo_rows.append((t, u, tsubo_man))
+    m_arr = np.array([r[2] for r in tsubo_rows], dtype=float)
+    if len(m_arr) == 0:
+        return None, None, 0
+    if len(m_arr) < 4:
+        avg_u = float(np.mean([u for _, u in filtered]))
+        m0 = (avg_u / 10000.0) * M2_TO_TSUBO
+        cap = f"（ボリュームゾーン：参照件数が少ないため平均 {m0:.1f}万円/坪）"
+        return avg_u, cap, len(filtered)
+    p25, p75 = np.percentile(m_arr, [25, 75])
+    in_band = [(t, u, m) for t, u, m in tsubo_rows if p25 <= m <= p75]
+    if not in_band:
+        in_band = tsubo_rows
+    avg_tsubo = float(np.mean([m for _, _, m in in_band]))
+    avg_sqm = avg_tsubo * 10000.0 / M2_TO_TSUBO
+    cap = (
+        f"（ボリュームゾーン：{p25:.1f}万円/坪～{p75:.1f}万円/坪　"
+        f"平均値{avg_tsubo:.1f}万円/坪）"
+    )
+    return avg_sqm, cap, len(in_band)
+
 
 def compute_avg_unit_price(csv_features: List[Dict]) -> Tuple[Optional[float], int]:
     """
@@ -1714,6 +1764,11 @@ def _generate_valuation_pdf_minimal(
     elements.append(Paragraph(f"住所: {address}", b_style))
     elements.append(Paragraph(f"種別: {property_type}", b_style))
     elements.append(Paragraph(f"査定額: {valuation/10000:,.0f} 万円", val_style))
+    zone_cap = (kwargs.get("land_volume_zone_caption") or "").strip()
+    if zone_cap:
+        from xml.sax.saxutils import escape as _xml_escape
+        elements.append(Spacer(1, 6))
+        elements.append(Paragraph(_xml_escape(zone_cap), s_style))
     doc.build(elements)
     buf.seek(0)
     return buf.read()
@@ -1803,6 +1858,10 @@ def _generate_valuation_pdf_impl(
         Paragraph("■ 査定結果", heading_style),
         Paragraph(f"査定額：{val_man:,.0f} 万円", val_style),
     ]
+    zone_cap = (kwargs.get("land_volume_zone_caption") or "").strip()
+    if zone_cap:
+        from xml.sax.saxutils import escape as _xml_escape
+        left_cell_contents.append(Paragraph(_xml_escape(zone_cap), small_style))
     building_breakdown = kwargs.get("building_breakdown")
     land_breakdown = kwargs.get("land_breakdown")
     if property_type == "中古住宅（戸建て）" and (land_breakdown is not None or building_breakdown is not None):
@@ -2057,7 +2116,13 @@ def render_valuation_result(sr, is_previous=False):
         f'仮査定金額：<span style="font-size: 3rem;">{valuation/10000:,.0f}</span> 万円</p>',
         unsafe_allow_html=True
     )
-    
+    lzc = sr.get("land_volume_zone_caption")
+    if lzc:
+        st.markdown(
+            f'<p style="font-size: 1rem; color: #555; margin-top: 0.25rem;">（{html.escape(str(lzc))}）</p>',
+            unsafe_allow_html=True,
+        )
+
     # PDFダウンロードボタン
     pdf_bytes = sr.get("pdf_bytes")
     if pdf_bytes:
@@ -2427,7 +2492,13 @@ if submitted:
                                 "property_type": property_type, "radius_km": radius_km,
                             }
                         else:
-                            avg_unit_price, csv_count = compute_avg_unit_price(csv_filtered)
+                            land_volume_zone_caption: Optional[str] = None
+                            if property_type == "土地":
+                                land_pairs = _collect_land_transaction_pairs(csv_filtered)
+                                avg_unit_price, land_volume_zone_caption, _ = _land_volume_zone_avg_from_pairs(land_pairs)
+                                csv_count = len(csv_filtered)
+                            else:
+                                avg_unit_price, csv_count = compute_avg_unit_price(csv_filtered)
                             if avg_unit_price is None or avg_unit_price <= 0:
                                 st.warning("㎡単価を算出できる取引データがありませんでした。")
                                 st.session_state.search_result = {
@@ -2464,12 +2535,16 @@ if submitted:
                                     csv_features_2km=csv_2km,
                                     csv_features_2km_land=csv_2km_land,
                                     csv_features_500m_land=csv_500m_land,
+                                    land_volume_zone_caption=land_volume_zone_caption if property_type == "土地" else None,
                                 )
                                 
                                 valuation = result[0]
                                 land_breakdown = result[1]
                                 building_breakdown = result[2]
                                 avg_land_500m = result[3] if len(result) > 3 else None
+                                land_vol_cap = result[4] if len(result) > 4 else None
+                                if property_type != "土地" and land_vol_cap:
+                                    land_volume_zone_caption = land_vol_cap
                                 adjusted_unit_price = avg_unit_price * building_age_correction
                                 
                                 status_text.info("📄 査定報告書（PDF）を作成中...")
@@ -2493,6 +2568,7 @@ if submitted:
                                         land_breakdown=land_breakdown if property_type == "中古住宅（戸建て）" else None,
                                         kakuti_rate=kakuti_rate, corner_check=corner_check,
                                         avg_land_500m=avg_land_500m if property_type == "中古住宅（戸建て）" else None,
+                                        land_volume_zone_caption=land_volume_zone_caption,
                                     )
                                 except Exception as e:
                                     st.warning(f"PDF生成中にエラーが発生しました: {e}")
@@ -2513,6 +2589,7 @@ if submitted:
                                     "building_breakdown": building_breakdown, "land_breakdown": land_breakdown,
                                     "avg_land_500m": avg_land_500m, "pdf_bytes": pdf_bytes,
                                     "price_chart": price_chart,
+                                    "land_volume_zone_caption": land_volume_zone_caption,
                                 }
                                 st.session_state.search_result = res_data
 
@@ -2534,6 +2611,7 @@ if submitted:
                                         "坪単価の平均（万円/坪）": round((avg_unit_price / 10000) * M2_TO_TSUBO, 1),
                                         "㎡単価の平均（万円/㎡）": round(avg_unit_price / 10000, 1),
                                         "参照事例数": csv_count,
+                                        **({"土地ボリュームゾーン": land_volume_zone_caption} if land_volume_zone_caption else {}),
                                     },
                                 }
                                 try:
