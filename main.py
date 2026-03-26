@@ -841,6 +841,7 @@ def build_price_trend_chart(csv_features: List[Dict]) -> Optional[Any]:
     df["year"] = pd.to_datetime(df["dt"]).dt.year
     line_df = df.groupby("year", as_index=False)["unit_price_tsubo_man"].mean().sort_values("year")
     line_df["period"] = pd.to_datetime(line_df["year"].astype(str) + "-07-01")
+    df["dt_plot"] = pd.to_datetime(df["dt"])
 
     import matplotlib.pyplot as plt
     from matplotlib import font_manager
@@ -853,26 +854,38 @@ def build_price_trend_chart(csv_features: List[Dict]) -> Optional[Any]:
     if font_path.exists():
         fp = font_manager.FontProperties(fname=str(font_path))
         plt.rcParams['font.family'] = fp.get_name()
-        ax.set_title("周辺の価格推移（過去5年・坪単価・年別平均）", fontproperties=fp, fontsize=14)
-        ax.set_xlabel("成約年", fontproperties=fp)
+        ax.set_title("周辺の価格推移（成約物件＋年別平均・坪単価）", fontproperties=fp, fontsize=14)
+        ax.set_xlabel("成約日", fontproperties=fp)
         ax.set_ylabel("坪単価（万円/坪）", fontproperties=fp)
+
+    ax.scatter(
+        df["dt_plot"],
+        df["unit_price_tsubo_man"],
+        color="#3498db",
+        alpha=0.45,
+        s=28,
+        label="成約物件",
+        zorder=2,
+        edgecolors="none",
+    )
 
     ax.plot(
         line_df["period"],
         line_df["unit_price_tsubo_man"],
-        color="#3498db",
+        color="#1a5276",
         marker="o",
         linestyle="-",
         linewidth=2,
         markersize=6,
         label="成約（年別平均）",
+        zorder=3,
     )
 
     if len(line_df) >= 2:
         x_numeric = line_df["period"].map(datetime.toordinal)
         z = np.polyfit(x_numeric, line_df["unit_price_tsubo_man"], 1)
         p = np.poly1d(z)
-        ax.plot(line_df["period"], p(x_numeric), "r--", linewidth=2, label="トレンドライン")
+        ax.plot(line_df["period"], p(x_numeric), "r--", linewidth=2, label="トレンドライン", zorder=4)
     # ------------------------------------------
 
     ax.grid(True, alpha=0.3)

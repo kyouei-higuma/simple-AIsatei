@@ -1087,10 +1087,19 @@ def build_price_trend_chart(csv_features: List[Dict]) -> Optional[Any]:
     df["year"] = pd.to_datetime(df["dt"]).dt.year
     line_df = df.groupby("year", as_index=False)["unit_price_tsubo_man"].mean().sort_values("year")
     line_df["period"] = pd.to_datetime(line_df["year"].astype(str) + "-07-01")
+    df["dt_plot"] = pd.to_datetime(df["dt"])
 
     import plotly.graph_objects as go
 
     fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=df["dt_plot"],
+        y=df["unit_price_tsubo_man"],
+        mode="markers",
+        name="成約物件",
+        marker=dict(color="rgba(52, 152, 219, 0.5)", size=7),
+        hovertemplate="成約日: %{x|%Y-%m-%d}<br>坪単価: %{y:.2f} 万円/坪<extra></extra>",
+    ))
     fig.add_trace(go.Scatter(
         x=line_df["period"],
         y=line_df["unit_price_tsubo_man"],
@@ -1115,10 +1124,10 @@ def build_price_trend_chart(csv_features: List[Dict]) -> Optional[Any]:
         ))
 
     fig.update_layout(
-        title=dict(text="周辺の価格推移（過去5年・坪単価・年別平均）", font=dict(size=16)),
+        title=dict(text="周辺の価格推移（成約物件＋年別平均・坪単価）", font=dict(size=16)),
         xaxis=dict(
-            title="成約年",
-            tickformat="%Y",
+            title="成約日",
+            tickformat="%y/%m",
             tickangle=-30,
             tickfont=dict(size=11),
         ),
