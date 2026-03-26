@@ -17,7 +17,7 @@ import requests
 import pandas as pd
 import numpy as np
 
-# data/ フォルダのパス（過去3年分のデータを優先）
+# data/ フォルダのパス（成約CSV。査定ロジックでは過去5年参照に合わせたフィルタを想定）
 DATA_DIR = Path(__file__).resolve().parent / "data"
 CSV_PATH_3YEARS = DATA_DIR / "seiyaku_20260321_10year_date.csv"
 CSV_PATH_LEGACY = DATA_DIR / "reins_data.csv"
@@ -585,7 +585,7 @@ def apply_case_filters(
     """
     事例を物件種別・築年数・成約時期でフィルタ。
     type_selected: 空なら全種別、指定ありならその種別のみ
-    contract_period: "1year" | "2years" | "all"
+    contract_period: "1year" | "2years" | "5years" | "all"
     """
     now = datetime.now()
     filtered = []
@@ -615,6 +615,10 @@ def apply_case_filters(
             elif contract_period == "2years":
                 two_years_ago = datetime(now.year - 2, now.month, now.day)
                 if dt < two_years_ago:
+                    continue
+            elif contract_period == "5years":
+                five_years_ago = datetime(now.year - 5, now.month, now.day)
+                if dt < five_years_ago:
                     continue
         filtered.append(f)
     return filtered
@@ -1078,36 +1082,37 @@ def build_price_trend_chart(csv_features: List[Dict]) -> Optional[Any]:
         return None
     df = pd.DataFrame(rows).sort_values("dt")
 
-    # 万円表示で見やすく（不動産の㎡単価は通常1〜50万円/㎡程度）
     df = df.copy()
-    df["unit_price_man"] = df["unit_price"] / 10000
+    df["unit_price_tsubo_man"] = (df["unit_price"] / 10000) * M2_TO_TSUBO
+    df["day"] = pd.to_datetime(df["dt"]).dt.normalize()
+    line_df = df.groupby("day", as_index=False)["unit_price_tsubo_man"].mean().sort_values("day")
 
     import plotly.graph_objects as go
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=df["dt"],
-        y=df["unit_price_man"],
-        mode="markers",
-        name="成約事例",
-        marker=dict(color="#3498db", size=10, opacity=0.6),
+        x=line_df["day"],
+        y=line_df["unit_price_tsubo_man"],
+        mode="lines+markers",
+        name="成約（日別平均）",
+        line=dict(color="#3498db", width=2, shape="linear"),
+        marker=dict(size=8, color="#3498db"),
     ))
 
-    if len(df) >= 2:
-        x_numeric = df["dt"].map(datetime.toordinal)
-        z = np.polyfit(x_numeric, df["unit_price_man"], 1)
+    if len(line_df) >= 2:
+        x_numeric = line_df["day"].map(datetime.toordinal)
+        z = np.polyfit(x_numeric, line_df["unit_price_tsubo_man"], 1)
         poly = np.poly1d(z)
         fig.add_trace(go.Scatter(
-            x=df["dt"],
+            x=line_df["day"],
             y=poly(x_numeric),
             mode="lines",
             name="トレンド",
-            line=dict(color="#e74c3c", width=2),
+            line=dict(color="#e74c3c", width=2, dash="dash"),
         ))
 
-    # スマホ向け：余白・フォント・高さを最適化
     fig.update_layout(
-        title=dict(text="周辺の価格推移（過去3年間）", font=dict(size=16)),
+        title=dict(text="周辺の価格推移（過去5年・坪単価・折れ線）", font=dict(size=16)),
         xaxis=dict(
             title="成約日",
             tickformat="%y/%m",
@@ -1115,7 +1120,7 @@ def build_price_trend_chart(csv_features: List[Dict]) -> Optional[Any]:
             tickfont=dict(size=11),
         ),
         yaxis=dict(
-            title="㎡単価（万円/㎡）",
+            title="坪単価（万円/坪）",
             tickformat=",.1f",
             tickfont=dict(size=11),
         ),
@@ -1132,7 +1137,7 @@ def build_price_trend_chart(csv_features: List[Dict]) -> Optional[Any]:
 
 def get_price_trend_analysis(csv_features: List[Dict]) -> Optional[str]:
     """
-    直近1年と3年前の平均単価を比較し、分析コメントを生成。
+    直近1年と5年前付近の帯の平均㎡単価を比較し、分析コメントを生成。
     外れ値の影響を抑えるためIQR等を利用して外れ値を除外した上で平均値を使用する。
     """
     rows = []
@@ -1171,23 +1176,23 @@ def get_price_trend_analysis(csv_features: List[Dict]) -> Optional[str]:
         
     now = datetime.now()
     one_year_ago = datetime(now.year - 1, now.month, 1)
-    two_years_ago = datetime(now.year - 2, now.month, 1)
-    three_years_ago = datetime(now.year - 3, now.month, 1)
-    
+    four_years_ago = datetime(now.year - 4, now.month, 1)
+    five_years_ago = datetime(now.year - 5, now.month, 1)
+
     recent = df[df["dt"] >= one_year_ago]["unit_price"]
-    old = df[(df["dt"] >= three_years_ago) & (df["dt"] < two_years_ago)]["unit_price"]
-    
+    old = df[(df["dt"] >= five_years_ago) & (df["dt"] < four_years_ago)]["unit_price"]
+
     if len(recent) == 0 or len(old) == 0:
         return None
-        
+
     recent_avg = recent.mean()
     old_avg = old.mean()
     if pd.isna(old_avg) or old_avg <= 0:
         return None
-        
+
     pct = (recent_avg - old_avg) / old_avg * 100
     direction = "上昇" if pct > 0 else "下落"
-    return f"直近1年間の平均単価は、3年前と比較して **{abs(pct):.1f}% {direction}** しています。（外れ値を除外し平均値で算出）"
+    return f"直近1年間の平均㎡単価は、5年前付近の水準と比較して **{abs(pct):.1f}% {direction}** しています。（外れ値を除外し平均値で算出）"
 
 
 def _build_marker_tooltip_html(feature: Dict) -> str:

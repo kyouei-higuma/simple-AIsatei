@@ -17,7 +17,7 @@ import requests
 import pandas as pd
 import numpy as np
 
-# data/ フォルダのパス（過去3年分のデータを優先）
+# data/ フォルダのパス（成約CSV。査定では過去5年分を参照）
 DATA_DIR = Path(__file__).resolve().parent / "data"
 CSV_PATH_3YEARS = DATA_DIR / "seiyaku_20260321_10year_date.csv"
 CSV_PATH_LEGACY = DATA_DIR / "reins_data.csv"
@@ -119,7 +119,7 @@ def _format_payload_for_google_chat(payload: Dict[str, Any]) -> Dict[str, str]:
         f"",
         f"*■ 査定結果*",
         f"仮査定金額: *{result.get('仮査定金額（万円）', '-')}万円*",
-        f"㎡単価: {result.get('㎡単価の平均（万円/㎡）', '-')}万円/㎡ / 坪単価: {result.get('坪単価の平均（万円/坪）', '-')}万円/坪 / 参照事例: {result.get('参照事例数', '-')}件",
+        f"坪単価: *{result.get('坪単価の平均（万円/坪）', '-')}万円/坪*（㎡: {result.get('㎡単価の平均（万円/㎡）', '-')}万円/㎡） / 参照: {result.get('参照事例数', '-')}件",
         f"",
         f"送信日時: {payload.get('送信日時', '-')}",
     ]
@@ -771,7 +771,7 @@ def apply_case_filters(
     """
     事例を物件種別・築年数・成約時期でフィルタ。
     type_selected: 空なら全種別、指定ありならその種別のみ
-    contract_period: "1year" | "2years" | "3years" | "all"
+    contract_period: "1year" | "2years" | "3years" | "5years" | "all"
     """
     now = datetime.now()
     filtered = []
@@ -805,6 +805,10 @@ def apply_case_filters(
             elif contract_period == "3years":
                 three_years_ago = datetime(now.year - 3, now.month, now.day)
                 if dt < three_years_ago:
+                    continue
+            elif contract_period == "5years":
+                five_years_ago = datetime(now.year - 5, now.month, now.day)
+                if dt < five_years_ago:
                     continue
         filtered.append(f)
     return filtered
@@ -1269,36 +1273,40 @@ def build_price_trend_chart(csv_features: List[Dict]) -> Optional[Any]:
         return None
     df = pd.DataFrame(rows).sort_values("dt")
 
-    # 万円表示で見やすく（不動産の㎡単価は通常1〜50万円/㎡程度）
+    # 坪単価（万円/坪）で表示
     df = df.copy()
-    df["unit_price_man"] = df["unit_price"] / 10000
+    df["unit_price_tsubo_man"] = (df["unit_price"] / 10000) * M2_TO_TSUBO
+    # 同日複数成約は日別平均にまとめ、時系列の折れ線で表示
+    df["day"] = pd.to_datetime(df["dt"]).dt.normalize()
+    line_df = df.groupby("day", as_index=False)["unit_price_tsubo_man"].mean().sort_values("day")
 
     import plotly.graph_objects as go
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=df["dt"],
-        y=df["unit_price_man"],
-        mode="markers",
-        name="成約事例",
-        marker=dict(color="#3498db", size=10, opacity=0.6),
+        x=line_df["day"],
+        y=line_df["unit_price_tsubo_man"],
+        mode="lines+markers",
+        name="成約（日別平均）",
+        line=dict(color="#3498db", width=2, shape="linear"),
+        marker=dict(size=8, color="#3498db"),
     ))
 
-    if len(df) >= 2:
-        x_numeric = df["dt"].map(datetime.toordinal)
-        z = np.polyfit(x_numeric, df["unit_price_man"], 1)
+    if len(line_df) >= 2:
+        x_numeric = line_df["day"].map(datetime.toordinal)
+        z = np.polyfit(x_numeric, line_df["unit_price_tsubo_man"], 1)
         poly = np.poly1d(z)
         fig.add_trace(go.Scatter(
-            x=df["dt"],
+            x=line_df["day"],
             y=poly(x_numeric),
             mode="lines",
             name="トレンド",
-            line=dict(color="#e74c3c", width=2),
+            line=dict(color="#e74c3c", width=2, dash="dash"),
         ))
 
     # スマホ向け：余白・フォント・高さを最適化
     fig.update_layout(
-        title=dict(text="周辺の価格推移（過去3年間）", font=dict(size=16)),
+        title=dict(text="周辺の価格推移（過去5年・坪単価・折れ線）", font=dict(size=16)),
         xaxis=dict(
             title="成約日",
             tickformat="%y/%m",
@@ -1306,7 +1314,7 @@ def build_price_trend_chart(csv_features: List[Dict]) -> Optional[Any]:
             tickfont=dict(size=11),
         ),
         yaxis=dict(
-            title="㎡単価（万円/㎡）",
+            title="坪単価（万円/坪）",
             tickformat=",.1f",
             tickfont=dict(size=11),
         ),
@@ -1323,7 +1331,7 @@ def build_price_trend_chart(csv_features: List[Dict]) -> Optional[Any]:
 
 def get_price_trend_analysis(csv_features: List[Dict]) -> Optional[str]:
     """
-    直近1年と3年前の平均単価を比較し、分析コメントを生成。
+    直近1年と5年前付近の帯の平均㎡単価を比較し、分析コメントを生成。
     外れ値の影響を抑えるためIQR等を利用して外れ値を除外した上で平均値を使用する。
     """
     rows = []
@@ -1362,23 +1370,23 @@ def get_price_trend_analysis(csv_features: List[Dict]) -> Optional[str]:
         
     now = datetime.now()
     one_year_ago = datetime(now.year - 1, now.month, 1)
-    two_years_ago = datetime(now.year - 2, now.month, 1)
-    three_years_ago = datetime(now.year - 3, now.month, 1)
-    
+    four_years_ago = datetime(now.year - 4, now.month, 1)
+    five_years_ago = datetime(now.year - 5, now.month, 1)
+
     recent = df[df["dt"] >= one_year_ago]["unit_price"]
-    old = df[(df["dt"] >= three_years_ago) & (df["dt"] < two_years_ago)]["unit_price"]
-    
+    old = df[(df["dt"] >= five_years_ago) & (df["dt"] < four_years_ago)]["unit_price"]
+
     if len(recent) == 0 or len(old) == 0:
         return None
-        
+
     recent_avg = recent.mean()
     old_avg = old.mean()
     if pd.isna(old_avg) or old_avg <= 0:
         return None
-        
+
     pct = (recent_avg - old_avg) / old_avg * 100
     direction = "上昇" if pct > 0 else "下落"
-    return f"直近1年間の平均単価は、3年前と比較して **{abs(pct):.1f}% {direction}** しています。（外れ値を除外し平均値で算出）"
+    return f"直近1年間の平均㎡単価は、5年前付近の水準と比較して **{abs(pct):.1f}% {direction}** しています。（外れ値を除外し平均値で算出）"
 
 
 def _build_marker_tooltip_html(feature: Dict) -> str:
@@ -2077,12 +2085,22 @@ def render_valuation_result(sr, is_previous=False):
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         tsubo_avg = (display_avg / 10000) * M2_TO_TSUBO
-        st.metric("㎡単価の平均", f"{display_avg/10000:,.1f} 万円/㎡", f"坪: {tsubo_avg:,.1f} 万円/坪")
+        st.markdown(
+            f'<p style="font-size:0.8rem;margin:0;color:#666;">坪単価の平均</p>'
+            f'<p style="font-size:1.85rem;font-weight:700;color:#1a5276;margin:0;line-height:1.2;">{tsubo_avg:,.1f}<span style="font-size:1rem;font-weight:600;"> 万円/坪</span></p>'
+            f'<p style="font-size:0.78rem;color:#888;margin:0.35rem 0 0 0;">㎡単価 {display_avg/10000:,.1f} 万円/㎡</p>',
+            unsafe_allow_html=True,
+        )
     with col2:
         st.metric("築年数補正係数", f"{correction:.2f}")
     with col3:
         tsubo_adj = (display_adj / 10000) * M2_TO_TSUBO
-        st.metric("補正後㎡単価", f"{display_adj/10000:,.1f} 万円/㎡", f"坪: {tsubo_adj:,.1f} 万円/坪")
+        st.markdown(
+            f'<p style="font-size:0.8rem;margin:0;color:#666;">補正後坪単価</p>'
+            f'<p style="font-size:1.85rem;font-weight:700;color:#1a5276;margin:0;line-height:1.2;">{tsubo_adj:,.1f}<span style="font-size:1rem;font-weight:600;"> 万円/坪</span></p>'
+            f'<p style="font-size:0.78rem;color:#888;margin:0.35rem 0 0 0;">㎡単価 {display_adj/10000:,.1f} 万円/㎡</p>',
+            unsafe_allow_html=True,
+        )
     with col4:
         st.metric("参考取引件数", f"{csv_count} 件")
 
@@ -2092,8 +2110,8 @@ def render_valuation_result(sr, is_previous=False):
                 f'<div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; margin-top: 10px; margin-bottom: 10px;">'
                 f'<strong>💡 参考情報</strong><br>'
                 f'半径500m以内の成約ベースの土地価格平均値： '
-                f'<span style="font-size: 1.2rem; font-weight: bold; color: #1f77b4;">{avg_land_500m/10000:,.1f} 万円/㎡</span> '
-                f'（坪単価: {(avg_land_500m/10000)*M2_TO_TSUBO:,.1f} 万円/坪）'
+                f'<span style="font-size: 1.35rem; font-weight: bold; color: #1f77b4;">{(avg_land_500m/10000)*M2_TO_TSUBO:,.1f} 万円/坪</span> '
+                f'<span style="font-size: 0.95rem; color: #555;">（㎡単価 {avg_land_500m/10000:,.1f} 万円/㎡）</span>'
                 f'</div>',
                 unsafe_allow_html=True
             )
@@ -2106,9 +2124,9 @@ def render_valuation_result(sr, is_previous=False):
                 unsafe_allow_html=True
             )
 
-    st.caption(f"※ 半径{radius_km}㎞の、過去3年の成約事例データを参考にしています。（住所: {address}）")
+    st.caption(f"※ 半径{radius_km}㎞の、過去5年の成約事例データを参考にしています。（住所: {address}）")
     if property_type == "土地":
-        st.caption("※ 成約ベースの価格から、㎡単価・坪単価に20%を上乗せしています。")
+        st.caption("※ 成約ベースの価格から、坪単価・㎡単価に20%を上乗せしています。")
 
     # 算出式
     try:
@@ -2313,7 +2331,7 @@ with st.form("search_form"):
     radius_km = 2.0 if "旭川市" in (address or "") else 5.0
     st.info(f"💡 検索半径は自動で設定されます（旭川市内: 2km、市外: 5km / 今回は **{radius_km}km** で検索します）")
 
-    st.caption(f"半径{radius_km}㎞の、過去3年の成約事例データを参考にしています。")
+    st.caption(f"半径{radius_km}㎞の、過去5年の成約事例データを参考にしています。")
 
     corner_check = False  # 角地・準角地の補正は無効化
 
@@ -2387,7 +2405,7 @@ if submitted:
                         filter_age_max = min(50, age_center + 5)
                         if age_center == 0:
                             filter_age_min, filter_age_max = 0, 10
-                        filter_contract_value = "3years"
+                        filter_contract_value = "5years"
                         csv_filtered = apply_case_filters(csv_features, filter_type, filter_age_min, filter_age_max, filter_contract_value)
                         
                         if not csv_filtered:
@@ -2502,6 +2520,7 @@ if submitted:
                                     },
                                     "査定結果": {
                                         "仮査定金額（万円）": round(valuation / 10000, 0),
+                                        "坪単価の平均（万円/坪）": round((avg_unit_price / 10000) * M2_TO_TSUBO, 1),
                                         "㎡単価の平均（万円/㎡）": round(avg_unit_price / 10000, 1),
                                         "参照事例数": csv_count,
                                     },
