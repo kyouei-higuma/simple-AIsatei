@@ -1273,31 +1273,33 @@ def build_price_trend_chart(csv_features: List[Dict]) -> Optional[Any]:
         return None
     df = pd.DataFrame(rows).sort_values("dt")
 
-    # 坪単価（万円/坪）で表示
+    # 坪単価（万円/坪）で表示。年別平均を折れ線で表示
     df = df.copy()
     df["unit_price_tsubo_man"] = (df["unit_price"] / 10000) * M2_TO_TSUBO
-    # 同日複数成約は日別平均にまとめ、時系列の折れ線で表示
-    df["day"] = pd.to_datetime(df["dt"]).dt.normalize()
-    line_df = df.groupby("day", as_index=False)["unit_price_tsubo_man"].mean().sort_values("day")
+    df["year"] = pd.to_datetime(df["dt"]).dt.year
+    line_df = df.groupby("year", as_index=False)["unit_price_tsubo_man"].mean().sort_values("year")
+    line_df["period"] = pd.to_datetime(line_df["year"].astype(str) + "-07-01")
 
     import plotly.graph_objects as go
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=line_df["day"],
+        x=line_df["period"],
         y=line_df["unit_price_tsubo_man"],
         mode="lines+markers",
-        name="成約（日別平均）",
+        name="成約（年別平均）",
         line=dict(color="#3498db", width=2, shape="linear"),
-        marker=dict(size=8, color="#3498db"),
+        marker=dict(size=9, color="#3498db"),
+        text=line_df["year"].astype(str) + "年",
+        hovertemplate="%{text}<br>坪単価: %{y:.2f} 万円/坪<extra></extra>",
     ))
 
     if len(line_df) >= 2:
-        x_numeric = line_df["day"].map(datetime.toordinal)
+        x_numeric = line_df["period"].map(datetime.toordinal)
         z = np.polyfit(x_numeric, line_df["unit_price_tsubo_man"], 1)
         poly = np.poly1d(z)
         fig.add_trace(go.Scatter(
-            x=line_df["day"],
+            x=line_df["period"],
             y=poly(x_numeric),
             mode="lines",
             name="トレンド",
@@ -1306,10 +1308,10 @@ def build_price_trend_chart(csv_features: List[Dict]) -> Optional[Any]:
 
     # スマホ向け：余白・フォント・高さを最適化
     fig.update_layout(
-        title=dict(text="周辺の価格推移（過去5年・坪単価・折れ線）", font=dict(size=16)),
+        title=dict(text="周辺の価格推移（過去5年・坪単価・年別平均）", font=dict(size=16)),
         xaxis=dict(
-            title="成約日",
-            tickformat="%y/%m",
+            title="成約年",
+            tickformat="%Y",
             tickangle=-30,
             tickfont=dict(size=11),
         ),
