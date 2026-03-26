@@ -958,7 +958,11 @@ def compute_valuation(
         )
     elif property_type == "中古住宅（戸建て）" and csv_features is not None:
         result = _compute_valuation_detached(
-            csv_features, land_area, subject_building_age, kakuti_rate,
+            csv_features,
+            land_area,
+            subject_building_age,
+            kakuti_rate,
+            subject_building_area_sqm=building_area,
             csv_features_2km=csv_features_2km,
             csv_features_2km_land=csv_features_2km_land,
             avg_unit_price=avg_unit_price,
@@ -979,6 +983,7 @@ def _compute_valuation_detached(
     land_area: float,
     subject_building_age: Optional[int],
     kakuti_rate: float,
+    subject_building_area_sqm: float = 0.0,
     csv_features_2km: Optional[List[Dict]] = None,
     csv_features_2km_land: Optional[List[Dict]] = None,
     avg_unit_price: Optional[float] = None,
@@ -988,7 +993,7 @@ def _compute_valuation_detached(
     中古戸建の査定：
     ・昭和56年以前（築44年以上）: 建物評価0（リフォームされていても）
     ・築35年以上: 建物基本評価0、リフォーム等で変動
-    ・築34年以下: 土地2km・売買価格差額で建物評価（土地の上乗せは廃止）
+    ・築34年以下: 土地2km・売買価格差額から「建物の延床㎡あたり円」を集計し、対象物件の延床㎡に按分
     土地㎡単価は成約総額フィルタ＋坪単価ボリュームゾーン平均を使用。
     """
     # 500m圏内の土地単価（参考・同じロジックで集約）
@@ -1035,14 +1040,15 @@ def _compute_valuation_detached(
     if subject_building_age is None or subject_building_age >= 35:
         return land_value_base, land_value_base, 0, avg_land_500m, land_zone_caption
 
-    # 築34年以下: 2km圏内土地単価から算出した土地価格 + (売買価格 - 土地価格)の平均
+    # 築34年以下: 差額の「建物円/延床㎡」を事例ごとに求め堅牢平均 → 対象の延床㎡へ按分（土地㎡で割った建物総額の平均は延床の小さい物件で過大になる）
     if csv_features_2km and subject_building_age is not None and subject_building_age <= 34:
-        building_values = []
+        building_yen_per_sqm: List[float] = []
         comp_ages: List[float] = []
         for f in csv_features_2km:
             p = f.get("properties", {})
             total = parse_numeric(p.get("u_transaction_price_total_ja"))
             land_a = parse_numeric(p.get("土地面積_数値")) or parse_numeric(p.get("u_area_ja"))
+            bldg_sqm = parse_numeric(p.get("建物面積_数値")) or parse_numeric(p.get("u_building_total_floor_area_ja"))
             age = p.get("築年数_成約時")
             age_f = float(age) if age is not None else 0
             if not total or total <= 0 or not land_a or land_a <= 0:
@@ -1051,14 +1057,15 @@ def _compute_valuation_detached(
                 continue
             land_price_case = land_a * avg_land * (1.0 + kakuti_rate)
             bldg_val = total - land_price_case
-            if bldg_val >= 0:
-                building_values.append(bldg_val)
+            if bldg_val >= 0 and bldg_sqm is not None and bldg_sqm > 0:
+                building_yen_per_sqm.append(bldg_val / float(bldg_sqm))
                 if age is not None:
                     comp_ages.append(max(1.0, min(120.0, float(age))))
-        if building_values:
-            avg_building = _compute_robust_average(building_values)
-            if avg_building is None:
-                avg_building = 0
+        if building_yen_per_sqm and subject_building_area_sqm > 0:
+            avg_rate = _compute_robust_average(building_yen_per_sqm)
+            if avg_rate is None:
+                avg_rate = 0.0
+            avg_building = avg_rate * float(subject_building_area_sqm)
             r_sub = _building_age_market_ratio(float(subject_building_age))
             if comp_ages:
                 r_comp = _building_age_market_ratio(sum(comp_ages) / len(comp_ages))
