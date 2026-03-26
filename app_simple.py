@@ -126,6 +126,9 @@ def _format_payload_for_google_chat(payload: Dict[str, Any]) -> Dict[str, str]:
     z = result.get("土地ボリュームゾーン")
     if z:
         lines.append(f"土地ボリュームゾーン: {z}")
+    bz = result.get("建物ボリュームゾーン")
+    if bz:
+        lines.append(f"建物ボリュームゾーン: {bz}")
     lines.extend([
         f"",
         f"送信日時: {payload.get('送信日時', '-')}",
@@ -835,6 +838,65 @@ def get_unit_price(feature: Dict) -> Optional[float]:
 DETACHED_DEPRECIATION_YEARS = 20
 STANDARD_NEW_BUILDING_PRICE = 15_000_000  # 標準的な新築建物価格（万円）
 
+# 建物坪単価の参考（円/坪）：帯ごとのボリュームゾーンと中央値。帯内は一定、帯をまたぐと段階的に変化
+_BUILDING_TSUBO_REF_BANDS: List[Dict[str, Any]] = [
+    {"a1": 1, "a2": 3, "lo": 544_000, "hi": 734_000, "med": 616_000, "label": "築2～3年帯"},
+    {"a1": 4, "a2": 5, "lo": 458_000, "hi": 665_000, "med": 569_000, "label": "築4～5年帯"},
+    {"a1": 6, "a2": 10, "lo": 381_000, "hi": 531_000, "med": 449_000, "label": "築6～10年帯"},
+    {"a1": 11, "a2": 15, "lo": 290_000, "hi": 412_000, "med": 348_000, "label": "築11～15年帯"},
+    {"a1": 16, "a2": 20, "lo": 202_000, "hi": 334_000, "med": 275_000, "label": "築16～20年帯"},
+]
+_REF_TSUBO_BASELINE_YEN = 616_000.0
+# 築21年以降：築11～15年帯と16～20年帯の中央値差を年換算した傾きで外挿
+_BUILDING_TSUBO_EXTRAP_SLOPE = (275_000.0 - 348_000.0) / (20.0 - 15.0)
+_BUILDING_TSUBO_EXTRAP_FLOOR = 40_000.0
+
+
+def _lookup_building_tsubo_band(age_years: int) -> Optional[Dict[str, Any]]:
+    if age_years <= 0:
+        return None
+    for b in _BUILDING_TSUBO_REF_BANDS:
+        if b["a1"] <= age_years <= b["a2"]:
+            return b
+    return None
+
+
+def _median_tsubo_yen_for_age(age_years: float) -> float:
+    """参考テーブルに沿った坪単価中央値（円/坪）。帯内は一定、築21年以降は外挿"""
+    if age_years <= 0:
+        return _REF_TSUBO_BASELINE_YEN
+    a = max(0, int(round(age_years)))
+    band = _lookup_building_tsubo_band(a)
+    if band is not None:
+        return float(band["med"])
+    y = 275_000.0 + (float(a) - 20.0) * _BUILDING_TSUBO_EXTRAP_SLOPE
+    return max(_BUILDING_TSUBO_EXTRAP_FLOOR, y)
+
+
+def format_building_volume_zone_caption(building_age: Optional[int]) -> Optional[str]:
+    """築年数に対応する建物坪単価の参考ボリュームゾーン文言（戸建・マンション表示用）"""
+    if building_age is None or building_age <= 0:
+        return None
+    a = int(building_age)
+    b = _lookup_building_tsubo_band(a)
+    if b is not None:
+        return (
+            f"建物坪単価の参考ボリュームゾーン：{b['lo']:,.0f}円/坪～{b['hi']:,.0f}円/坪、"
+            f"中央値{b['med']:,.0f}円/坪（{b['label']}）"
+        )
+    med = int(round(_median_tsubo_yen_for_age(float(a))))
+    return (
+        f"建物坪単価の参考（外挿）：中央目安{med:,.0f}円/坪（築{a}年。参考テーブルは築20年帯までのため外挿）"
+    )
+
+
+def _building_age_market_ratio(age_years: Optional[float]) -> float:
+    """築2～3年帯中央値を1.0としたときの相対係数（㎡単価補正・建物評価の目安に使用）"""
+    if age_years is None or age_years <= 0:
+        return 1.0
+    med = _median_tsubo_yen_for_age(float(age_years))
+    return med / _REF_TSUBO_BASELINE_YEN if _REF_TSUBO_BASELINE_YEN > 0 else 1.0
+
 
 def get_building_residual_rate_20y(age_years: Optional[float]) -> float:
     """築20年でゼロになる線形減価の残価率"""
@@ -957,6 +1019,7 @@ def _compute_valuation_detached(
     # 築34年以下: 2km圏内土地単価から算出した土地価格 + (売買価格 - 土地価格)の平均
     if csv_features_2km and subject_building_age is not None and subject_building_age <= 34:
         building_values = []
+        comp_ages: List[float] = []
         for f in csv_features_2km:
             p = f.get("properties", {})
             total = parse_numeric(p.get("u_transaction_price_total_ja"))
@@ -971,10 +1034,17 @@ def _compute_valuation_detached(
             bldg_val = total - land_price_case
             if bldg_val >= 0:
                 building_values.append(bldg_val)
+                if age is not None:
+                    comp_ages.append(max(1.0, min(120.0, float(age))))
         if building_values:
             avg_building = _compute_robust_average(building_values)
             if avg_building is None:
                 avg_building = 0
+            r_sub = _building_age_market_ratio(float(subject_building_age))
+            if comp_ages:
+                r_comp = _building_age_market_ratio(sum(comp_ages) / len(comp_ages))
+                if r_comp > 1e-6:
+                    avg_building *= r_sub / r_comp
             land_value = land_value_base
             return land_value + avg_building, land_value, avg_building, avg_land_500m, land_zone_caption
 
@@ -1078,16 +1148,10 @@ def get_frontage_correction_rate(frontage_m: float) -> float:
 
 
 def get_building_age_correction_factor(building_age: Optional[int]) -> float:
-    """築年数に応じた平米単価の補正係数を返す"""
+    """築年数に応じた㎡単価の補正係数。建物坪単価は帯ごとに段階変化し、築2～3年帯中央値を1.0とする相対値。"""
     if building_age is None or building_age <= 0:
         return 1.0
-    if building_age < 20:
-        return 1.2
-    if building_age < 30:
-        return 1.0
-    if building_age < 40:
-        return 0.9
-    return 0.8
+    return _building_age_market_ratio(float(building_age))
 
 
 def get_depreciation_advice(building_age: Optional[int], property_type: str) -> Optional[str]:
@@ -1765,10 +1829,14 @@ def _generate_valuation_pdf_minimal(
     elements.append(Paragraph(f"種別: {property_type}", b_style))
     elements.append(Paragraph(f"査定額: {valuation/10000:,.0f} 万円", val_style))
     zone_cap = (kwargs.get("land_volume_zone_caption") or "").strip()
-    if zone_cap:
+    bld_zone = (kwargs.get("building_volume_zone_caption") or "").strip()
+    if zone_cap or bld_zone:
         from xml.sax.saxutils import escape as _xml_escape
         elements.append(Spacer(1, 6))
-        elements.append(Paragraph(_xml_escape(zone_cap), s_style))
+        if zone_cap:
+            elements.append(Paragraph(_xml_escape(zone_cap), s_style))
+        if bld_zone:
+            elements.append(Paragraph(_xml_escape(bld_zone), s_style))
     doc.build(elements)
     buf.seek(0)
     return buf.read()
@@ -1862,6 +1930,10 @@ def _generate_valuation_pdf_impl(
     if zone_cap:
         from xml.sax.saxutils import escape as _xml_escape
         left_cell_contents.append(Paragraph(_xml_escape(zone_cap), small_style))
+    bld_zone = (kwargs.get("building_volume_zone_caption") or "").strip()
+    if bld_zone:
+        from xml.sax.saxutils import escape as _xml_escape
+        left_cell_contents.append(Paragraph(_xml_escape(bld_zone), small_style))
     building_breakdown = kwargs.get("building_breakdown")
     land_breakdown = kwargs.get("land_breakdown")
     if property_type == "中古住宅（戸建て）" and (land_breakdown is not None or building_breakdown is not None):
@@ -2120,6 +2192,12 @@ def render_valuation_result(sr, is_previous=False):
     if lzc:
         st.markdown(
             f'<p style="font-size: 1rem; color: #555; margin-top: 0.25rem;">（{html.escape(str(lzc))}）</p>',
+            unsafe_allow_html=True,
+        )
+    bzc = sr.get("building_volume_zone_caption")
+    if bzc:
+        st.markdown(
+            f'<p style="font-size: 1rem; color: #555; margin-top: 0.25rem;">（{html.escape(str(bzc))}）</p>',
             unsafe_allow_html=True,
         )
 
@@ -2546,7 +2624,10 @@ if submitted:
                                 if property_type != "土地" and land_vol_cap:
                                     land_volume_zone_caption = land_vol_cap
                                 adjusted_unit_price = avg_unit_price * building_age_correction
-                                
+                                building_volume_zone_caption: Optional[str] = None
+                                if property_type in ("中古住宅（戸建て）", "中古マンション") and building_age_val:
+                                    building_volume_zone_caption = format_building_volume_zone_caption(building_age_val)
+
                                 status_text.info("📄 査定報告書（PDF）を作成中...")
                                 price_chart = build_price_trend_chart(csv_filtered)
                                 map_df = build_map_dataframe(lat, lon, csv_filtered)
@@ -2569,6 +2650,7 @@ if submitted:
                                         kakuti_rate=kakuti_rate, corner_check=corner_check,
                                         avg_land_500m=avg_land_500m if property_type == "中古住宅（戸建て）" else None,
                                         land_volume_zone_caption=land_volume_zone_caption,
+                                        building_volume_zone_caption=building_volume_zone_caption,
                                     )
                                 except Exception as e:
                                     st.warning(f"PDF生成中にエラーが発生しました: {e}")
@@ -2590,6 +2672,7 @@ if submitted:
                                     "avg_land_500m": avg_land_500m, "pdf_bytes": pdf_bytes,
                                     "price_chart": price_chart,
                                     "land_volume_zone_caption": land_volume_zone_caption,
+                                    "building_volume_zone_caption": building_volume_zone_caption,
                                 }
                                 st.session_state.search_result = res_data
 
@@ -2612,6 +2695,7 @@ if submitted:
                                         "㎡単価の平均（万円/㎡）": round(avg_unit_price / 10000, 1),
                                         "参照事例数": csv_count,
                                         **({"土地ボリュームゾーン": land_volume_zone_caption} if land_volume_zone_caption else {}),
+                                        **({"建物ボリュームゾーン": building_volume_zone_caption} if building_volume_zone_caption else {}),
                                     },
                                 }
                                 try:
