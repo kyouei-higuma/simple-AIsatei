@@ -824,11 +824,30 @@ def apply_case_filters(
     return filtered
 
 
+def _deal_area_sqm_for_unit_price(p: Dict[str, Any]) -> Optional[float]:
+    """
+    成約総額を割る面積（㎡）。
+    土地と建物延床の両方が取れるときは (土地+延床) を使い、建物単価を土地㎡だけで割った過大な㎡単価にならないようにする。
+    """
+    land = parse_numeric(p.get("土地面積_数値"))
+    bldg = parse_numeric(p.get("建物面積_数値")) or parse_numeric(p.get("u_building_total_floor_area_ja"))
+    if land is not None and bldg is not None and land > 0 and bldg > 0:
+        return float(land + bldg)
+    if land is not None and land > 0:
+        return float(land)
+    if bldg is not None and bldg > 0:
+        return float(bldg)
+    u = parse_numeric(p.get("u_area_ja"))
+    if u is not None and u > 0:
+        return float(u)
+    return None
+
+
 def get_unit_price(feature: Dict) -> Optional[float]:
-    """取引データから㎡単価を取得"""
+    """取引データから㎡単価を取得（戸建は原則 成約総額÷(土地㎡+延床㎡)）"""
     p = feature.get("properties", {})
     total = parse_numeric(p.get("u_transaction_price_total_ja"))
-    area = parse_numeric(p.get("u_area_ja")) or parse_numeric(p.get("u_building_total_floor_area_ja"))
+    area = _deal_area_sqm_for_unit_price(p)
     if total and area and area > 0:
         return total / area
     return None
@@ -1376,7 +1395,7 @@ def build_price_trend_chart(csv_features: List[Dict]) -> Optional[Any]:
     for f in csv_features:
         p = f.get("properties", {})
         total = parse_numeric(p.get("u_transaction_price_total_ja"))
-        area = parse_numeric(p.get("u_area_ja")) or parse_numeric(p.get("u_building_total_floor_area_ja"))
+        area = _deal_area_sqm_for_unit_price(p)
         if not total or not area or area <= 0:
             continue
         dt = _parse_date_ymd(p.get("point_in_time_name_ja") or p.get("成約年月日") or "")
@@ -2231,7 +2250,13 @@ def render_valuation_result(sr, is_previous=False):
     if property_type == "中古住宅（戸建て）" and land_breakdown is not None:
         display_avg = (land_breakdown / land_area_input) / (1.0 + kakuti_rate) if land_area_input > 0 else 0
         display_adj = display_avg
+        _house_label_avg = "土地ベース・坪単価（推定）"
+        _house_label_adj = "土地ベース・補正後（参考）"
+        _m2_unit_caption = "土地㎡単価"
     else:
+        _house_label_avg = "坪単価の平均"
+        _house_label_adj = "補正後坪単価"
+        _m2_unit_caption = "㎡単価"
         _apply_markup = (property_type == "土地")
         display_avg = (avg_unit_price * LAND_MARKUP_RATE) if _apply_markup else avg_unit_price
         display_adj = (adjusted_unit_price * LAND_MARKUP_RATE) if _apply_markup else adjusted_unit_price
@@ -2240,9 +2265,9 @@ def render_valuation_result(sr, is_previous=False):
     with col1:
         tsubo_avg = (display_avg / 10000) * M2_TO_TSUBO
         st.markdown(
-            f'<p style="font-size:0.8rem;margin:0;color:#666;">坪単価の平均</p>'
+            f'<p style="font-size:0.8rem;margin:0;color:#666;">{_house_label_avg}</p>'
             f'<p style="font-size:1.85rem;font-weight:700;color:#1a5276;margin:0;line-height:1.2;">{tsubo_avg:,.1f}<span style="font-size:1rem;font-weight:600;"> 万円/坪</span></p>'
-            f'<p style="font-size:0.78rem;color:#888;margin:0.35rem 0 0 0;">㎡単価 {display_avg/10000:,.1f} 万円/㎡</p>',
+            f'<p style="font-size:0.78rem;color:#888;margin:0.35rem 0 0 0;">{_m2_unit_caption} {display_avg/10000:,.1f} 万円/㎡</p>',
             unsafe_allow_html=True,
         )
     with col2:
@@ -2250,13 +2275,29 @@ def render_valuation_result(sr, is_previous=False):
     with col3:
         tsubo_adj = (display_adj / 10000) * M2_TO_TSUBO
         st.markdown(
-            f'<p style="font-size:0.8rem;margin:0;color:#666;">補正後坪単価</p>'
+            f'<p style="font-size:0.8rem;margin:0;color:#666;">{_house_label_adj}</p>'
             f'<p style="font-size:1.85rem;font-weight:700;color:#1a5276;margin:0;line-height:1.2;">{tsubo_adj:,.1f}<span style="font-size:1rem;font-weight:600;"> 万円/坪</span></p>'
-            f'<p style="font-size:0.78rem;color:#888;margin:0.35rem 0 0 0;">㎡単価 {display_adj/10000:,.1f} 万円/㎡</p>',
+            f'<p style="font-size:0.78rem;color:#888;margin:0.35rem 0 0 0;">{_m2_unit_caption} {display_adj/10000:,.1f} 万円/㎡</p>',
             unsafe_allow_html=True,
         )
     with col4:
         st.metric("参考取引件数", f"{csv_count} 件")
+
+    building_area_input = sr.get("building_area_input") or 0.0
+    if (
+        property_type == "中古住宅（戸建て）"
+        and (building_breakdown or 0) > 0
+        and building_area_input > 0
+    ):
+        b_m2 = building_breakdown / building_area_input
+        b_tsubo_man = (b_m2 / 10000) * M2_TO_TSUBO
+        st.markdown(
+            f'<div style="background-color: #f8f9fa; padding: 10px; border-radius: 6px; margin-top: 8px;">'
+            f'<span style="font-size:0.85rem;color:#444;">建物評価ベース（入力の延床面積で按分）：'
+            f'<strong style="color:#1a5276;">{b_tsubo_man:,.1f} 万円/坪</strong>　'
+            f'延床㎡単価 {b_m2/10000:,.1f} 万円/㎡</span></div>',
+            unsafe_allow_html=True,
+        )
 
     if property_type == "中古住宅（戸建て）":
         if avg_land_500m is not None and avg_land_500m > 0:
