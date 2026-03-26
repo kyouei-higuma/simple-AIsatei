@@ -261,6 +261,24 @@ def haversine_distance(lon1: float, lat1: float, lon2: float, lat2: float) -> fl
     return R * c
 
 
+def _haversine_m_np(
+    center_lon: float,
+    center_lat: float,
+    lon_arr: np.ndarray,
+    lat_arr: np.ndarray,
+) -> np.ndarray:
+    """中心点から各点までの距離（m）。lon_arr / lat_arr は同長の1次元配列。"""
+    R = 6371000.0
+    phi1 = math.radians(center_lat)
+    phi2 = np.radians(lat_arr.astype(np.float64, copy=False))
+    dphi = np.radians(lat_arr.astype(np.float64, copy=False) - center_lat)
+    dlambda = np.radians(lon_arr.astype(np.float64, copy=False) - center_lon)
+    a = np.sin(dphi / 2.0) ** 2 + np.cos(phi1) * np.cos(phi2) * (np.sin(dlambda / 2.0) ** 2)
+    a = np.clip(a, 0.0, 1.0)
+    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1.0 - a))
+    return R * c
+
+
 def parse_numeric(value, suffixes: Tuple[str, ...] = (",", " ", "円", "/m²", "㎡", "m²", "万円", "万")) -> Optional[float]:
     """文字列を数値に変換（単位が含まれていても抽出する）"""
     if pd.isna(value):
@@ -562,7 +580,17 @@ def csv_row_to_feature(
     needs_save = False
     if row.get("lat") is not None and row.get("lon") is not None:
         lat, lon = float(row["lat"]), float(row["lon"])
-    elif address:
+    elif df is not None and row.get("_df_index") is not None:
+        try:
+            la = df.at[row["_df_index"], "latitude"]
+            lo = df.at[row["_df_index"], "longitude"]
+            if _is_valid_coord(la) and _is_valid_coord(lo):
+                lat, lon = float(la), float(lo)
+                row["lat"], row["lon"] = lat, lon
+        except Exception:
+            pass
+
+    if (row.get("lat") is None or row.get("lon") is None) and address:
         coords = _geocode_address_cached(address)
         if coords:
             lat, lon = coords
@@ -616,6 +644,62 @@ def save_geocodes_to_csv(df: pd.DataFrame) -> None:
         pass
 
 
+def _build_radius_hint_from_df(
+    csv_df: pd.DataFrame,
+    center_lat: float,
+    center_lon: float,
+    radius_m: float,
+) -> Dict[Any, Optional[bool]]:
+    """
+    DataFrame の latitude/longitude から、各行が半径内かを事前判定。
+    戻り値: インデックスラベル -> True=圏内, False=圏外（座標あり）, None=座標なし（要ジオコーディングの可能性）
+    """
+    hint: Dict[Any, Optional[bool]] = {}
+    if csv_df is None or csv_df.empty:
+        return hint
+    if "latitude" not in csv_df.columns or "longitude" not in csv_df.columns:
+        return hint
+    lat_a = pd.to_numeric(csv_df["latitude"], errors="coerce").to_numpy(dtype=np.float64)
+    lon_a = pd.to_numeric(csv_df["longitude"], errors="coerce").to_numpy(dtype=np.float64)
+    n = len(csv_df)
+    valid = np.isfinite(lat_a) & np.isfinite(lon_a)
+    dist = np.full(n, np.inf, dtype=np.float64)
+    if np.any(valid):
+        dist[valid] = _haversine_m_np(center_lon, center_lat, lon_a[valid], lat_a[valid])
+    for i in range(n):
+        lab = csv_df.index[i]
+        if not valid[i]:
+            hint[lab] = None
+        else:
+            hint[lab] = bool(dist[i] <= radius_m)
+    return hint
+
+
+def filter_features_by_distance(
+    features: List[Dict],
+    center_lat: float,
+    center_lon: float,
+    radius_m: float,
+) -> List[Dict]:
+    """既に feature 化済みの事例から、中心から radius_m 以内だけを抽出（全件CSV再走査なし）。"""
+    out: List[Dict] = []
+    for feat in features:
+        geom = feat.get("geometry") or {}
+        coords = geom.get("coordinates") or []
+        if len(coords) < 2:
+            continue
+        plon, plat = float(coords[0]), float(coords[1])
+        if plon == 0.0 and plat == 0.0:
+            continue
+        if haversine_distance(center_lon, center_lat, plon, plat) <= radius_m:
+            out.append(feat)
+    return out
+
+
+# 1回の距離フィルタあたり、座標欠損行に対するジオコーディング上限（大量CSVでフリーズしないため）
+_MAX_GEOCODE_PER_DISTANCE_FILTER = 800
+
+
 def filter_csv_by_distance(
     csv_cases: List[Dict[str, Any]],
     center_lat: float,
@@ -626,17 +710,43 @@ def filter_csv_by_distance(
 ) -> List[Dict]:
     """
     CSV事例を検索住所からの距離でフィルタ。
-    座標がない行のみジオコーディング（API呼び出し）。10件ごとにCSV保存。
+    DataFrame に緯度経度がある行はベクトル距離で圏外を即スキップ（ジオコーディングしない）。
+    座標がない行のみジオコーディング。件数上限あり。10件ごとにCSV保存。
     """
     SAVE_INTERVAL = 10
-    features = []
+    radius_hint = _build_radius_hint_from_df(csv_df, center_lat, center_lon, radius_m) if csv_df is not None else {}
+    geocode_budget = _MAX_GEOCODE_PER_DISTANCE_FILTER
+    features: List[Dict] = []
     geocode_count = 0
+
     for row in csv_cases:
+        idx = row.get("_df_index")
+        hint = radius_hint.get(idx) if radius_hint else None
+
+        if hint is False:
+            continue
+
+        if hint is True and csv_df is not None and idx is not None:
+            try:
+                la = csv_df.at[idx, "latitude"]
+                lo = csv_df.at[idx, "longitude"]
+                if _is_valid_coord(la) and _is_valid_coord(lo):
+                    row["lat"] = float(la)
+                    row["lon"] = float(lo)
+            except Exception:
+                pass
+
+        if hint is None and geocode_budget <= 0:
+            if row.get("lat") is None or row.get("lon") is None:
+                continue
+
         feat, needs_save = csv_row_to_feature(row, center_lon, center_lat, csv_df)
         if needs_save:
             geocode_count += 1
+            geocode_budget -= 1
             if geocode_count % SAVE_INTERVAL == 0 and csv_df is not None and not csv_df.empty:
                 save_geocodes_to_csv(csv_df)
+
         geom = feat.get("geometry", {})
         coords = geom.get("coordinates", [0, 0])
         if len(coords) >= 2:
@@ -645,6 +755,7 @@ def filter_csv_by_distance(
                 d = haversine_distance(center_lon, center_lat, plon, plat)
                 if d <= radius_m:
                     features.append(feat)
+
     if geocode_count > 0 and csv_df is not None and not csv_df.empty:
         save_geocodes_to_csv(csv_df)
     return features
@@ -2253,7 +2364,7 @@ if submitted:
                     st.error("住所の変換（ジオコーディング）に失敗しました。住所を正しく入力するか、地図から選択してください。")
                 else:
                     lat, lon = coords
-                    status_text.info("🔍 周辺の取引事例を検索中...")
+                    status_text.info("📍 取引データを照合中...")
 
                     search_radius_m = float(radius_km) * 1000
                     csv_raw = st.session_state.get("csv_cases", [])
@@ -2306,11 +2417,11 @@ if submitted:
                                 csv_500m_land = None
                                 if property_type == "中古住宅（戸建て）":
                                     if building_age_val is not None and building_age_val <= 34:
-                                        csv_2km_raw = filter_csv_by_distance(st.session_state.csv_cases, lat, lon, 2000, csv_df=st.session_state.csv_df)
+                                        csv_2km_raw = filter_features_by_distance(csv_features, lat, lon, 2000)
                                         csv_2km = apply_case_filters(csv_2km_raw, filter_type, 0, 50, filter_contract_value)
                                         csv_2km_land = apply_case_filters(csv_2km_raw, PROPERTY_TYPE_TO_CSV_TYPE.get("土地", []), 0, 50, filter_contract_value)
-                                    
-                                    csv_500m_raw = filter_csv_by_distance(st.session_state.csv_cases, lat, lon, 500, csv_df=st.session_state.csv_df)
+
+                                    csv_500m_raw = filter_features_by_distance(csv_features, lat, lon, 500)
                                     land_types = PROPERTY_TYPE_TO_CSV_TYPE.get("土地", ["売地", "土地", "宅地"])
                                     csv_500m_land = apply_case_filters(csv_500m_raw, land_types, 0, 50, filter_contract_value)
 
