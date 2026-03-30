@@ -993,7 +993,7 @@ def _compute_valuation_detached(
     中古戸建の査定：
     ・昭和56年以前（築44年以上）: 建物評価0（リフォームされていても）
     ・築35年以上: 建物基本評価0、リフォーム等で変動
-    ・築34年以下: 土地2km・売買価格差額から「建物の延床㎡あたり円」を集計し、対象物件の延床㎡に按分
+    ・築34年以下: 土地1km・売買価格差額から「建物の延床㎡あたり円」を集計し、対象物件の延床㎡に按分
     土地㎡単価は成約総額フィルタ＋坪単価ボリュームゾーン平均を使用。
     """
     # 500m圏内の土地単価（参考・同じロジックで集約）
@@ -1003,7 +1003,7 @@ def _compute_valuation_detached(
         if pairs_500m:
             avg_land_500m, _, _ = _land_volume_zone_avg_from_pairs(pairs_500m)
 
-    # 土地単価用ペア（2km「土地」優先 → 築25年以上戸建 → フォールバック）
+    # 土地単価用ペア（1km「土地」優先 → 築25年以上戸建 → フォールバック）
     land_pairs: List[Tuple[float, float]] = []
     if csv_features_2km_land and subject_building_age is not None and subject_building_age <= 34:
         land_pairs.extend(_collect_land_transaction_pairs(csv_features_2km_land))
@@ -2525,9 +2525,9 @@ if st.session_state.get("show_map"):
             st.rerun()
 
 with st.form("search_form"):
-    # 旭川市内は半径2km、市外は半径5kmに固定
-    radius_km = 2.0 if "旭川市" in (address or "") else 5.0
-    st.info(f"💡 検索半径は自動で設定されます（旭川市内: 2km、市外: 5km / 今回は **{radius_km}km** で検索します）")
+    # 旭川市内・市外とも半径1kmに固定
+    radius_km = 1.0
+    st.info(f"💡 検索半径は自動で設定されます（**半径 {radius_km}km** で検索します）")
 
     st.caption(f"半径{radius_km}㎞の、過去5年の成約事例データを参考にしています。")
 
@@ -2633,13 +2633,13 @@ if submitted:
                                 building_age_correction = 1.0 if property_type == "土地" else get_building_age_correction_factor(building_age_val)
                                 kakuti_rate = get_corner_correction_rate(corner_check)
                                 
-                                # 特殊な計算（戸建て2kmなど）
+                                # 特殊な計算（戸建て・メイン検索と同じ1km圏など）
                                 csv_2km = None
                                 csv_2km_land = None
                                 csv_500m_land = None
                                 if property_type == "中古住宅（戸建て）":
                                     if building_age_val is not None and building_age_val <= 34:
-                                        csv_2km_raw = filter_features_by_distance(csv_features, lat, lon, 2000)
+                                        csv_2km_raw = filter_features_by_distance(csv_features, lat, lon, 1000)
                                         csv_2km = apply_case_filters(csv_2km_raw, filter_type, 0, 50, filter_contract_value)
                                         csv_2km_land = apply_case_filters(csv_2km_raw, PROPERTY_TYPE_TO_CSV_TYPE.get("土地", []), 0, 50, filter_contract_value)
 
