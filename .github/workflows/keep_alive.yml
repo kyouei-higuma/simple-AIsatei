@@ -1,0 +1,26 @@
+name: Keep Streamlit App Alive
+
+on:
+  schedule:
+    # 毎日 日本時間の朝9時と夜21時の2回実行（UTC 0:00, 12:00）
+    - cron: '0 0,12 * * *'
+  workflow_dispatch: # 手動で実行するためのボタンを表示
+
+jobs:
+  auto-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Update keep_alive.txt
+        run: |
+          echo "Last run: $(date)" > keep_alive.txt
+
+      - name: Commit and Push
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add keep_alive.txt
+          git commit -m "Keep alive: Update timestamp" || exit 0
+          git push
