@@ -2400,7 +2400,7 @@ with st.container():
     col_l1, col_l2, col_l3 = st.columns([2, 2, 2])
     with col_l2:
         if logo_path.exists():
-            st.image(str(logo_path), use_column_width=True)
+            st.image(str(logo_path), use_container_width=True)
         else:
             st.markdown('<h3 style="text-align:center; margin-bottom: 0;">株式会社 杏栄</h3>', unsafe_allow_html=True)
 
