@@ -9,12 +9,21 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      KEEP_AWAKE_URL: ${{ secrets.KEEP_AWAKE_URL }}
     steps:
+      - name: Validate URL secret
+        run: |
+          if [ -z "$KEEP_AWAKE_URL" ]; then
+            echo "KEEP_AWAKE_URL secret is not set."
+            exit 1
+          fi
+
       - name: First ping
-        run: curl -sS -L "https://appsimplepy-aq5imo7g2rgzjoadzekymy.streamlit.app" -o /dev/null
+        run: curl -sS -L "$KEEP_AWAKE_URL" -o /dev/null
 
       - name: Wait before second ping
         run: sleep 15
 
       - name: Second ping
-        run: curl -sS -L "https://appsimplepy-aq5imo7g2rgzjoadzekymy.streamlit.app" -o /dev/null
+        run: curl -sS -L "$KEEP_AWAKE_URL" -o /dev/null
