@@ -34,17 +34,99 @@ st.set_page_config(
 # Streamlit全体の余白を極限まで削るCSS
 st.markdown("""
 <style>
-/* 1. 全体のコンテナ余白をゼロにする */
+/* ── 全体 ── */
 .block-container {
     padding-top: 0rem !important;
     padding-bottom: 0rem !important;
     margin-top: 0 !important;
+    max-width: 720px !important;
+    background: #f0f6ff !important;
 }
-/* 2. ツールバーとヘッダーを非表示 */
 [data-testid="stToolbar"], [data-testid="stHeader"], footer { display: none !important; }
 .stDeployButton, #stDecoration { display: none !important; }
-/* 3. 各要素間の下マージンを最小限にする */
-[data-testid="element-container"] { margin-bottom: 0.2rem !important; }
+
+/* ── ラジオボタン ── */
+.stRadio label { font-weight: 600; color: #1a3a6b; }
+.stRadio div[role="radiogroup"] label {
+    background: #edf4fb;
+    border: 1.5px solid #c5d8ee;
+    border-radius: 8px;
+    padding: 6px 14px;
+    margin-right: 6px;
+    color: #1a3a6b;
+    font-weight: 600;
+}
+.stRadio div[role="radiogroup"] label:hover {
+    background: #d6eaf8;
+    border-color: #1a5fa8;
+}
+
+/* ── 入力フォーム ── */
+.stTextInput input, .stNumberInput input {
+    border: 1.5px solid #c5d8ee !important;
+    border-radius: 8px !important;
+    background: #fff !important;
+    color: #1a3a6b !important;
+    padding: 8px 12px !important;
+}
+.stTextInput input:focus, .stNumberInput input:focus {
+    border-color: #1a5fa8 !important;
+    box-shadow: 0 0 0 2px rgba(26,95,168,0.15) !important;
+}
+
+/* ── ボタン ── */
+.stButton > button {
+    background: #1a5fa8 !important;
+    color: #fff !important;
+    border: none !important;
+    border-radius: 50px !important;
+    padding: 10px 28px !important;
+    font-weight: 700 !important;
+    font-size: 15px !important;
+    width: 100% !important;
+    transition: opacity 0.15s !important;
+}
+.stButton > button:hover { opacity: 0.88 !important; }
+
+/* ── フォーム送信ボタン ── */
+.stFormSubmitButton > button {
+    background: #1a5fa8 !important;
+    color: #fff !important;
+    border: none !important;
+    border-radius: 50px !important;
+    padding: 12px 28px !important;
+    font-weight: 700 !important;
+    font-size: 16px !important;
+    width: 100% !important;
+}
+
+/* ── チェックボックス ── */
+.stCheckbox label { color: #1a3a6b; font-weight: 600; }
+
+/* ── セクション見出し ── */
+.stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
+    color: #0f2a5e;
+    font-weight: 700;
+}
+
+/* ── info・warning ── */
+.stAlert {
+    border-radius: 10px !important;
+    border-left: 4px solid #1a5fa8 !important;
+}
+
+/* ── サイドバー ── */
+[data-testid="stSidebar"] {
+    background: #e8f2fd !important;
+}
+[data-testid="stSidebar"] .stMarkdown { color: #1a3a6b; }
+
+/* ── selectbox ── */
+.stSelectbox select {
+    border: 1.5px solid #c5d8ee !important;
+    border-radius: 8px !important;
+    color: #1a3a6b !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
