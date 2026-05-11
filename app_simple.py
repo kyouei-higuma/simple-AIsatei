@@ -1883,15 +1883,16 @@ with st.form("search_form"):
     st.info(f"💡 検索半径は自動で設定されます（**半径 {radius_km}km** で検索します）")
     st.caption(f"半径{radius_km}㎞の、過去5年の成約事例データを参考にしています。")
     corner_check = False
-    st.markdown("---")
-    st.markdown("**ご連絡情報の入力をお願いします。**")
-    contact_name = st.text_input("お名前（必須）", value=st.session_state.get("_qp_name", ""), placeholder="例: 山田 太郎")
-    contact_phone = st.text_input("電話番号（必須）", value=st.session_state.get("_qp_phone", ""), placeholder="例: 090-1234-5678")
-    contact_email = st.text_input("メールアドレス（必須）", value=st.session_state.get("_qp_email", ""), placeholder="例: example@email.com")
-    st.markdown("**個人情報の取り扱い（必須）**")
-    st.markdown('<a href="https://www.kyouei-asahikawa.com/privacy.html" target="_blank" rel="noopener noreferrer">『個人情報の取り扱い等について』</a>をお読みいただき、ご同意のうえ査定してください。', unsafe_allow_html=True)
-    privacy_agree = st.checkbox("同意する", value=False, key="privacy_agree")
-    submitted = st.form_submit_button("査定を実行")
+    if not _from_form_html:
+        st.markdown("---")
+        st.markdown("**ご連絡情報の入力をお願いします。**")
+        contact_name = st.text_input("お名前（必須）", value=st.session_state.get("_qp_name", ""), placeholder="例: 山田 太郎")
+        contact_phone = st.text_input("電話番号（必須）", value=st.session_state.get("_qp_phone", ""), placeholder="例: 090-1234-5678")
+        contact_email = st.text_input("メールアドレス（必須）", value=st.session_state.get("_qp_email", ""), placeholder="例: example@email.com")
+        st.markdown("**個人情報の取り扱い（必須）**")
+        st.markdown('<a href="https://www.kyouei-asahikawa.com/privacy.html" target="_blank" rel="noopener noreferrer">『個人情報の取り扱い等について』</a>をお読みいただき、ご同意のうえ査定してください。', unsafe_allow_html=True)
+        privacy_agree = st.checkbox("同意する", value=False, key="privacy_agree")
+    submitted = st.form_submit_button("査定を実行" if not _from_form_html else "")
 
 
 # form.htmlから自動遷移した場合、同意済みとして自動査定
