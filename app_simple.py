@@ -1963,6 +1963,28 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
+    # ── Google Chat Webhook 診断 ──────────────────────────
+    st.markdown("---")
+    st.markdown("### 🔔 Chat通知の確認")
+    _wh_url, _wh_src = _get_webhook_url()
+    if _wh_url:
+        st.success(f"URL設定: ✅ あり（{_wh_src}）")
+    else:
+        st.error("URL設定: ❌ なし\n\n`WEBHOOK_URL` を Streamlit Cloud の Secrets または環境変数に設定してください。")
+
+    if st.button("📨 テスト通知を送信"):
+        if not _wh_url:
+            st.sidebar.error("WEBHOOK_URL が未設定です。")
+        else:
+            with st.spinner("送信中..."):
+                _test_body = {"text": "【テスト】AI査定 Webhook 動作確認メッセージです。"}
+                _ok, _err = send_inquiry_to_webhook(_test_body)
+            if _ok:
+                st.sidebar.success("✅ Google Chat に届きました！")
+            else:
+                st.sidebar.error(f"❌ 送信失敗: {_err}")
+    # ─────────────────────────────────────────────────────
+
 character_path = Path(__file__).parent / "assets" / "Copilot_20260324_100708.png"
 
 st.markdown("""
