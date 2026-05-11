@@ -8,7 +8,6 @@ import hashlib
 import html
 import io
 import logging
-from concurrent.futures import ThreadPoolExecutor
 import math
 import os
 import re
@@ -544,42 +543,8 @@ def _run_valuation_pipeline(
         else:
             logger.warning("[webhook] Notification failed or skipped: %s", err_wh)
 
-        status_text.info("📄 査定報告書（PDF）を作成中...")
-        # グラフ・表・地図データは独立しているため並列化して待ち時間を短縮
-        with ThreadPoolExecutor(max_workers=3) as pool:
-            fut_chart = pool.submit(build_price_trend_chart, csv_filtered)
-            fut_map = pool.submit(build_map_dataframe, lat, lon, csv_filtered)
-            fut_tbl = pool.submit(
-                build_csv_reference_table,
-                csv_filtered,
-                MAX_REFERENCE_CASES,
-                True,
-            )
-            price_chart = fut_chart.result()
-            map_df = fut_map.result()
-            df_pdf = fut_tbl.result()
-
-        pdf_bytes = None
-        try:
-            pdf_bytes = generate_valuation_pdf(
-                address=address, property_type=property_type, area_input=area_input,
-                building_age=int(building_age) if building_age > 0 else 0,
-                valuation=valuation, avg_unit_price=avg_unit_price,
-                correction=building_age_correction, adjusted_unit_price=adjusted_unit_price,
-                transaction_count=csv_count, df_reference=df_pdf,
-                map_df=map_df, price_chart=price_chart,
-                land_area_input=land_area_input, building_area_input=building_area_input,
-                exclusive_area_input=exclusive_area_input,
-                building_breakdown=building_breakdown if property_type == "中古住宅（戸建て）" else None,
-                land_breakdown=land_breakdown if property_type == "中古住宅（戸建て）" else None,
-                kakuti_rate=kakuti_rate, corner_check=corner_check,
-                avg_land_500m=avg_land_500m if property_type == "中古住宅（戸建て）" else None,
-                land_volume_zone_caption=land_volume_zone_caption,
-                building_volume_zone_caption=building_volume_zone_caption,
-            )
-        except Exception as e:
-            logger.exception("[valuation] PDF error: %s", e)
-            st.warning(f"PDF生成中にエラーが発生しました: {e}")
+        # 価格グラフ（UI表示用）のみここで生成。PDF生成は結果表示後に遅延実行
+        price_chart = build_price_trend_chart(csv_filtered)
 
         res_data = {
             "has_valuation": True,
@@ -594,7 +559,7 @@ def _run_valuation_pipeline(
             "building_age": building_age, "building_age_val": building_age_val,
             "area_input": area_input,
             "building_breakdown": building_breakdown, "land_breakdown": land_breakdown,
-            "avg_land_500m": avg_land_500m, "pdf_bytes": pdf_bytes,
+            "avg_land_500m": avg_land_500m, "pdf_bytes": None,  # 結果表示後に生成
             "price_chart": price_chart,
             "land_volume_zone_caption": land_volume_zone_caption,
             "building_volume_zone_caption": building_volume_zone_caption,
@@ -1654,20 +1619,78 @@ def build_map_dataframe(center_lat, center_lon, csv_features):
     return pd.DataFrame(rows)
 
 
+def _price_trend_png_for_pdf(csv_features) -> Optional[bytes]:
+    """PDF用価格推移チャート（matplotlib生成・kaleido不要）。"""
+    if not csv_features:
+        return None
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import matplotlib.dates as mdates
+
+        font_file = Path(__file__).resolve().parent / "ipaexg.ttf"
+        if font_file.exists():
+            from matplotlib import font_manager as _fm
+            _fp = _fm.FontProperties(fname=str(font_file))
+            plt.rcParams["font.family"] = _fp.get_name()
+
+        rows = []
+        for f in csv_features:
+            p = f.get("properties", {})
+            total = parse_numeric(p.get("u_transaction_price_total_ja"))
+            area = _deal_area_sqm_for_unit_price(p)
+            if not total or not area or area <= 0:
+                continue
+            dt = _parse_date_ymd(p.get("point_in_time_name_ja") or p.get("成約年月日") or "")
+            if dt:
+                rows.append({"dt": dt, "up_tsubo": (total / area / 10000) * M2_TO_TSUBO})
+        if not rows:
+            return None
+
+        df_tmp = pd.DataFrame(rows).sort_values("dt")
+        df_tmp["year"] = pd.to_datetime(df_tmp["dt"]).dt.year
+        line_df = df_tmp.groupby("year", as_index=False)["up_tsubo"].mean().sort_values("year")
+
+        fig, ax = plt.subplots(figsize=(6, 2.8))
+        dates = [r["dt"] for r in rows]
+        prices = [r["up_tsubo"] for r in rows]
+        ax.scatter(dates, prices, color="#3498db", alpha=0.45, s=12, label="成約物件")
+        year_dates = [datetime(int(y), 7, 1) for y in line_df["year"]]
+        ax.plot(year_dates, line_df["up_tsubo"].values, color="#e74c3c",
+                linewidth=1.8, marker="o", markersize=5, label="年別平均")
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%y/%m"))
+        ax.xaxis.set_major_locator(mdates.YearLocator())
+        plt.setp(ax.xaxis.get_majorticklabels(), rotation=30, fontsize=7)
+        ax.set_ylabel("坪単価（万円）", fontsize=8)
+        ax.legend(fontsize=7)
+        ax.grid(True, alpha=0.3)
+        plt.tight_layout()
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png", dpi=110, bbox_inches="tight")
+        plt.close(fig)
+        buf.seek(0)
+        return buf.read()
+    except Exception as e:
+        logger.warning("[pdf_chart] matplotlib chart error: %s", e)
+        return None
+
+
 def _plotly_fig_to_png(fig):
+    """Plotly図→PNG（kaleido）。PDF遅延生成では _price_trend_png_for_pdf を優先使用。"""
     if fig is None:
         return None
-    import io
-    import matplotlib.pyplot as plt
     try:
         buf = io.BytesIO()
         if hasattr(fig, "savefig"):
             fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+            buf.seek(0)
+            return buf.read()
         else:
-            # scale を下げると kaleido レンダリングが短くなる（画質は PDF 用途で十分）
             buf.write(fig.to_image(format="png", scale=1))
-        buf.seek(0)
-        return buf.read()
+            buf.seek(0)
+            return buf.read()
     except Exception:
         return None
 
@@ -1823,7 +1846,12 @@ def _generate_valuation_pdf_impl(address, property_type, area_input, building_ag
     kakuti_table = Table(kakuti_data, colWidths=[40*mm, 30*mm])
     kakuti_table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#3498db")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke), ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#fafafa")), ("FONT", (0, 0), (-1, -1), font_name, 8), ("GRID", (0, 0), (-1, -1), 0.5, colors.grey)]))
     left_cell_contents.append(kakuti_table)
-    chart_img = _plotly_fig_to_png(price_chart) if price_chart is not None else None
+    # csv_features_for_chart が渡されていれば kaleido 不要の matplotlib 版を優先
+    csv_feats_chart = kwargs.get("csv_features_for_chart")
+    if csv_feats_chart:
+        chart_img = _price_trend_png_for_pdf(csv_feats_chart)
+    else:
+        chart_img = _plotly_fig_to_png(price_chart) if price_chart is not None else None
     right_cell_contents = []
     if chart_img:
         right_cell_contents.append(Paragraph("■ 価格トレンドグラフ", heading_style))
@@ -2007,6 +2035,40 @@ def render_valuation_result(sr, is_previous=False):
     if bzc:
         st.markdown(f'<p style="font-size: 1rem; color: #555; margin-top: 0.25rem;">（{html.escape(str(bzc))}）</p>', unsafe_allow_html=True)
     pdf_bytes = sr.get("pdf_bytes")
+    if pdf_bytes is None:
+        # 査定計算完了後にここで初めてPDFを生成（kaleido不使用・matplotlib）
+        with st.spinner("📄 PDFを生成しています…"):
+            try:
+                _sr = sr
+                _csv_f = _sr.get("csv_filtered", [])
+                _map_df = build_map_dataframe(_sr["lat"], _sr["lon"], _csv_f)
+                _df_pdf = build_csv_reference_table(_csv_f, limit=MAX_REFERENCE_CASES, for_pdf=True)
+                _pt = _sr["property_type"]
+                pdf_bytes = generate_valuation_pdf(
+                    address=_sr["address"], property_type=_pt,
+                    area_input=_sr["area_input"],
+                    building_age=int(_sr.get("building_age") or 0),
+                    valuation=_sr["valuation"], avg_unit_price=_sr["avg_unit_price"],
+                    correction=_sr["correction"], adjusted_unit_price=_sr["adjusted_unit_price"],
+                    transaction_count=_sr["csv_count"], df_reference=_df_pdf,
+                    map_df=_map_df, price_chart=_sr.get("price_chart"),
+                    land_area_input=_sr.get("land_area_input", 0),
+                    building_area_input=_sr.get("building_area_input", 0),
+                    exclusive_area_input=_sr.get("exclusive_area_input", 0),
+                    building_breakdown=_sr.get("building_breakdown") if _pt == "中古住宅（戸建て）" else None,
+                    land_breakdown=_sr.get("land_breakdown") if _pt == "中古住宅（戸建て）" else None,
+                    kakuti_rate=_sr.get("kakuti_rate", 0),
+                    corner_check=_sr.get("corner_check", False),
+                    avg_land_500m=_sr.get("avg_land_500m") if _pt == "中古住宅（戸建て）" else None,
+                    land_volume_zone_caption=_sr.get("land_volume_zone_caption"),
+                    building_volume_zone_caption=_sr.get("building_volume_zone_caption"),
+                    csv_features_for_chart=_csv_f,  # matplotlib チャート用（kaleido不使用）
+                )
+                # 再生成しないようキャッシュ
+                if st.session_state.get("search_result") is not None:
+                    st.session_state.search_result["pdf_bytes"] = pdf_bytes
+            except Exception as _pdf_e:
+                logger.exception("[pdf_lazy] error: %s", _pdf_e)
     if pdf_bytes:
         st.download_button(label="📄 査定書をPDFでダウンロード", data=pdf_bytes, file_name=f"査定報告書_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf", mime="application/pdf", type="primary", key="pdf_download_prev" if is_previous else "pdf_download")
     avg_unit_price = sr["avg_unit_price"]

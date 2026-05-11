@@ -1,0 +1,23 @@
+name: Keep Render app alive
+
+on:
+  schedule:
+    # 毎日 9時・12時・15時・18時（JST = UTC+9）に実行 → UTC 0,3,6,9時
+    - cron: "0 0,3,6,9 * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render app to prevent cold start
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 60 \
+            "https://simple-aisatei.onrender.com/")
+          echo "HTTP status: $STATUS"
+          if [ "$STATUS" -lt 200 ] || [ "$STATUS" -ge 500 ]; then
+            echo "Warning: App may be down (status $STATUS)"
+          else
+            echo "App is alive (status $STATUS)"
+          fi
