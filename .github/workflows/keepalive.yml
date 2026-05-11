@@ -2,8 +2,8 @@ name: Keep Render app alive
 
 on:
   schedule:
-    # 毎日 9時・12時・15時・18時（JST = UTC+9）に実行 → UTC 0,3,6,9時
-    - cron: "0 0,3,6,9 * * *"
+    # 10分おきに実行（Render フリープランは15分でスリープするため）
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 jobs:

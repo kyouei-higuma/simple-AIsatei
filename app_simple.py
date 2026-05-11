@@ -1047,6 +1047,14 @@ def filter_features_by_distance(features, center_lat, center_lon, radius_m):
 _MAX_GEOCODE_PER_DISTANCE_FILTER = 800
 
 
+@st.cache_data(
+    ttl=3600,
+    hash_funcs={
+        list: lambda x: len(x),
+        pd.DataFrame: lambda df: (tuple(df.columns.tolist()), df.shape),
+    },
+    show_spinner=False,
+)
 def filter_csv_by_distance(csv_cases, center_lat, center_lon, radius_m, csv_df=None, progress_placeholder=None):
     SAVE_INTERVAL = 10
     radius_hint = _build_radius_hint_from_df(csv_df, center_lat, center_lon, radius_m) if csv_df is not None else {}
