@@ -616,35 +616,84 @@ def _get_map_zoom_for_radius(radius_km: float) -> int:
     return zoom
 
 
+def _normalize_address_for_geocode(address: str) -> str:
+    """全角数字・ハイフン類を半角に変換し、前後の空白を除去する。"""
+    # 全角数字 10文字 + ハイフン類 4文字 = 14文字ずつ
+    table = str.maketrans(
+        "０１２３４５６７８９－‐―ー",
+        "0123456789----",
+    )
+    return address.strip().translate(table)
+
+
+def _shorten_address(address: str) -> list:
+    """
+    番地以降を段階的に除いた候補リストを返す。
+    例: "旭川市永山3条12丁目1-2" → ["旭川市永山3条12丁目1-2", "旭川市永山3条12丁目", "旭川市永山3条"]
+    """
+    import re
+    candidates = [address]
+    # 丁目以降を除去
+    m = re.sub(r"(\d+丁目).*", r"\1", address)
+    if m != address:
+        candidates.append(m)
+    # 丁目ごと除去（条だけ残す）
+    m2 = re.sub(r"\d+丁目.*", "", address).strip()
+    if m2 and m2 not in candidates:
+        candidates.append(m2)
+    return candidates
+
+
 def _geocode_gsi(address: str) -> Optional[Tuple[float, float]]:
-    try:
-        url = "https://msearch.gsi.go.jp/address-search/AddressSearch"
-        resp = requests.get(url, params={"q": address.strip()}, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
-        if data and len(data) > 0:
-            geom = data[0].get("geometry") or {}
-            coords = geom.get("coordinates", [])
-            if len(coords) >= 2:
-                lon, lat = float(coords[0]), float(coords[1])
-                return (lat, lon)
-    except Exception:
-        pass
+    for candidate in _shorten_address(_normalize_address_for_geocode(address)):
+        try:
+            url = "https://msearch.gsi.go.jp/address-search/AddressSearch"
+            resp = requests.get(url, params={"q": candidate}, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            if data and len(data) > 0:
+                geom = data[0].get("geometry") or {}
+                coords = geom.get("coordinates", [])
+                if len(coords) >= 2:
+                    lon, lat = float(coords[0]), float(coords[1])
+                    return (lat, lon)
+        except Exception:
+            pass
+    return None
+
+
+def _geocode_heartrails(address: str) -> Optional[Tuple[float, float]]:
+    """HeartRails Geocoder（日本住所専用フォールバック）。"""
+    for candidate in _shorten_address(_normalize_address_for_geocode(address)):
+        try:
+            url = "https://geoapi.heartrails.com/api/json"
+            resp = requests.get(url, params={"method": "searchByAddress", "address": candidate}, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            locations = (data.get("response") or {}).get("location", [])
+            if locations:
+                lat = float(locations[0].get("y", 0))
+                lon = float(locations[0].get("x", 0))
+                if lat and lon:
+                    return (lat, lon)
+        except Exception:
+            pass
     return None
 
 
 def _geocode_nominatim(address: str) -> Optional[Tuple[float, float]]:
-    try:
-        from geopy.geocoders import Nominatim
-        from geopy.extra.rate_limiter import RateLimiter
-        geolocator = Nominatim(user_agent="real_estate_app")
-        geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
-        query = f"日本 {address.strip()}" if "日本" not in address else address.strip()
-        location = geocode(query)
-        if location:
-            return (location.latitude, location.longitude)
-    except Exception:
-        pass
+    for candidate in _shorten_address(_normalize_address_for_geocode(address)):
+        try:
+            from geopy.geocoders import Nominatim
+            from geopy.extra.rate_limiter import RateLimiter
+            geolocator = Nominatim(user_agent="real_estate_app")
+            geocode = RateLimiter(geolocator.geocode, min_delay_seconds=1)
+            query = f"日本 {candidate}" if "日本" not in candidate else candidate
+            location = geocode(query)
+            if location:
+                return (location.latitude, location.longitude)
+        except Exception:
+            pass
     return None
 
 
@@ -654,8 +703,18 @@ def _geocode_address_cached(address: str) -> Optional[Tuple[float, float]]:
         return None
     result = _geocode_gsi(address)
     if result:
+        logger.info("[geocode] GSI OK: %s", address)
         return result
-    return _geocode_nominatim(address)
+    result = _geocode_heartrails(address)
+    if result:
+        logger.info("[geocode] HeartRails OK: %s", address)
+        return result
+    result = _geocode_nominatim(address)
+    if result:
+        logger.info("[geocode] Nominatim OK: %s", address)
+    else:
+        logger.warning("[geocode] All geocoders failed: %s", address)
+    return result
 
 
 def geocode_address(address: str) -> Optional[Tuple[float, float]]:
