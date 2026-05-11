@@ -1560,6 +1560,21 @@ def _init_from_query_params():
 _init_from_query_params()
 # ────────────────────────────────────────────────────────────
 
+# form.htmlから来た場合：入力ウィジェットをCSSで非表示にして確認画面化
+_from_form_html = st.session_state.get("_auto_run_satei", False)
+if _from_form_html:
+    st.markdown("""<style>
+/* 確認画面：入力ウィジェット・ヒーローを非表示 */
+div[data-testid="stRadio"],
+div[data-testid="stNumberInput"],
+div[data-testid="stTextInput"],
+div[data-testid="stCheckbox"],
+div[data-testid="stExpander"],
+div[data-testid="column"],
+[data-testid="stFormSubmitButton"],
+.stButton { display: none !important; }
+</style>""", unsafe_allow_html=True)
+
 # 起動時に一度だけCSVを読み込み
 if not st.session_state.initial_load_done:
     try:
@@ -1709,6 +1724,38 @@ with st.container():
         else:
             st.markdown('<h3 style="text-align:center; margin-bottom: 0;">株式会社 杏栄</h3>', unsafe_allow_html=True)
 
+# form.htmlから来た場合：確認画面表示
+if st.session_state.get("_auto_run_satei", False):
+    _ptype_disp = st.session_state.get("_qp_ptype", "")
+    _addr_disp = st.session_state.get("address_value", "")
+    _land_m2 = st.session_state.get("_qp_land_m2", 0)
+    _bldg_m2 = st.session_state.get("_qp_bldg_m2", 0)
+    _excl_m2 = st.session_state.get("_qp_excl_m2", 0)
+    _age_disp = st.session_state.get("_qp_age", 0)
+    _name_disp = st.session_state.get("_qp_name", "")
+    _phone_disp = st.session_state.get("_qp_phone", "")
+    _email_disp = st.session_state.get("_qp_email", "")
+    if _ptype_disp == "土地":
+        _area_disp = f"土地面積: {_land_m2:.1f}㎡（{_land_m2/3.30578:.1f}坪）"
+    elif _ptype_disp == "中古住宅（戸建て）":
+        _area_disp = f"土地: {_land_m2:.1f}㎡（{_land_m2/3.30578:.1f}坪）／建物: {_bldg_m2:.1f}㎡（{_bldg_m2/3.30578:.1f}坪）"
+    else:
+        _area_disp = f"専有面積: {_excl_m2:.1f}㎡"
+    st.markdown(f"""
+<div style="background:#fff;border:1.5px solid #c5d8ee;border-radius:12px;padding:18px 20px;margin-bottom:16px;font-size:15px;">
+<div style="font-weight:700;color:#1a3a6b;font-size:16px;margin-bottom:12px;">📋 入力内容の確認</div>
+<table style="width:100%;border-collapse:collapse;">
+<tr><td style="padding:6px 8px;color:#666;width:35%;">物件種別</td><td style="padding:6px 8px;font-weight:600;color:#1a3a6b;">{_ptype_disp}</td></tr>
+<tr style="background:#f8faff;"><td style="padding:6px 8px;color:#666;">住所</td><td style="padding:6px 8px;font-weight:600;color:#1a3a6b;">{_addr_disp}</td></tr>
+<tr><td style="padding:6px 8px;color:#666;">面積</td><td style="padding:6px 8px;font-weight:600;color:#1a3a6b;">{_area_disp}</td></tr>
+<tr style="background:#f8faff;"><td style="padding:6px 8px;color:#666;">築年数</td><td style="padding:6px 8px;font-weight:600;color:#1a3a6b;">{_age_disp}年</td></tr>
+<tr><td style="padding:6px 8px;color:#666;">お名前</td><td style="padding:6px 8px;font-weight:600;color:#1a3a6b;">{_name_disp} 様</td></tr>
+<tr style="background:#f8faff;"><td style="padding:6px 8px;color:#666;">電話番号</td><td style="padding:6px 8px;font-weight:600;color:#1a3a6b;">{_phone_disp}</td></tr>
+<tr><td style="padding:6px 8px;color:#666;">メール</td><td style="padding:6px 8px;font-weight:600;color:#1a3a6b;">{_email_disp}</td></tr>
+</table>
+</div>
+""", unsafe_allow_html=True)
+
 st.markdown("""
 <div style="width: 100%; max-width: 800px; margin: -10px auto 0 auto; font-family: 'Helvetica Neue', Arial, sans-serif;">
 <div style="background: linear-gradient(135deg, #f0faff 0%, #e6f5ff 100%); border-radius: 15px; border: 2px solid #bde0fe; box-shadow: 0 10px 25px rgba(0,0,0,0.06); text-align: center; padding: 20px; position: relative; overflow: hidden;">
@@ -1814,32 +1861,6 @@ if st.session_state.get("show_map"):
             st.session_state["show_map"] = False
             st.rerun()
 
-# URLパラメータがある場合は自動査定フラグを設定
-_from_form_html = st.session_state.get("_auto_run_satei", False)
-
-if _from_form_html and not st.session_state.get("_auto_run_done"):
-    # form.htmlから来た場合：フォームを表示せず直接査定実行
-    st.markdown("""
-<div style="background:#1a5fa8;color:#fff;padding:20px;border-radius:12px;text-align:center;font-size:20px;font-weight:700;margin-bottom:20px;">
-⏳ AI査定を実行中です。しばらくお待ちください...
-</div>
-""", unsafe_allow_html=True)
-    submitted = True
-    privacy_agree = True
-    contact_name = st.session_state.get("_qp_name", "")
-    contact_phone = st.session_state.get("_qp_phone", "")
-    contact_email = st.session_state.get("_qp_email", "")
-    address = st.session_state.get("address_value", "")
-    radius_km = 1.0
-    corner_check = False
-    st.session_state["_auto_run_done"] = True
-else:
-    submitted = False
-    privacy_agree = False
-    contact_name = ""
-    contact_phone = ""
-    contact_email = ""
-
 with st.form("search_form"):
     radius_km = 1.0
     st.info(f"💡 検索半径は自動で設定されます（**半径 {radius_km}km** で検索します）")
@@ -1852,16 +1873,21 @@ with st.form("search_form"):
     contact_email = st.text_input("メールアドレス（必須）", value=st.session_state.get("_qp_email", ""), placeholder="例: example@email.com")
     st.markdown("**個人情報の取り扱い（必須）**")
     st.markdown('<a href="https://www.kyouei-asahikawa.com/privacy.html" target="_blank" rel="noopener noreferrer">『個人情報の取り扱い等について』</a>をお読みいただき、ご同意のうえ査定してください。', unsafe_allow_html=True)
-    _auto_agree = st.session_state.get("_auto_run_satei", False)
-    privacy_agree = st.checkbox("同意する", value=_auto_agree, key="privacy_agree")
-    _form_submitted = st.form_submit_button("査定を実行")
-    if _form_submitted:
-        submitted = True
-        privacy_agree = privacy_agree
-        contact_name = contact_name
-        contact_phone = contact_phone
-        contact_email = contact_email
+    privacy_agree = st.checkbox("同意する", value=False, key="privacy_agree")
+    submitted = st.form_submit_button("査定を実行")
 
+
+# form.htmlから自動遷移した場合、同意済みとして自動査定
+if st.session_state.get("_auto_run_satei") and not st.session_state.get("_auto_run_done"):
+    st.session_state["_auto_run_done"] = True
+    submitted = True
+    privacy_agree = True
+    contact_name = st.session_state.get("_qp_name", "")
+    contact_phone = st.session_state.get("_qp_phone", "")
+    contact_email = st.session_state.get("_qp_email", "")
+    address = st.session_state.get("address_value", "")
+    radius_km = 1.0
+    corner_check = False
 if submitted:
     try:
         if not contact_name or not contact_name.strip():
