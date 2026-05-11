@@ -540,8 +540,15 @@ def _run_valuation_pipeline(
         ok_wh, err_wh = send_inquiry_to_webhook(webhook_body)
         if ok_wh:
             logger.info("[webhook] Notification sent OK")
+            st.toast("✅ Google Chat に通知を送信しました", icon="✅")
         else:
             logger.warning("[webhook] Notification failed or skipped: %s", err_wh)
+            # UI にもエラーを表示（管理者が確認しやすいように）
+            _wh_url_check, _wh_src_check = _get_webhook_url()
+            if not _wh_url_check:
+                st.warning("⚠️ WEBHOOK_URL が未設定です。Render の環境変数を確認してください。")
+            else:
+                st.warning(f"⚠️ Google Chat 通知エラー（{_wh_src_check}）: {err_wh or '詳細はサーバーログを確認'}")
 
         # 価格グラフ（UI表示用）のみここで生成。PDF生成は結果表示後に遅延実行
         price_chart = build_price_trend_chart(csv_filtered)
