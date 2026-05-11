@@ -8,6 +8,7 @@ import hashlib
 import html
 import io
 import logging
+from concurrent.futures import ThreadPoolExecutor
 import math
 import os
 import re
@@ -171,16 +172,33 @@ M2_TO_TSUBO = 3.30578
 LAND_MARKUP_RATE = 1.20
 LAND_UNDERPRICE_VS_MEAN_YEN = 2_000_000
 
-def _get_webhook_url() -> Optional[str]:
+def _normalize_webhook_url(raw: Optional[str]) -> str:
+    """環境変数や secrets に付いた引用符・前後空白を除去。"""
+    if raw is None:
+        return ""
+    s = str(raw).strip()
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in ("'", '"'):
+        s = s[1:-1].strip()
+    return s
+
+
+def _get_webhook_url() -> Tuple[Optional[str], str]:
+    """
+    Google Chat Incoming Webhook の URL。
+    非空の環境変数 WEBHOOK_URL を最優先（Cloud Run 等で secrets と食い違うと通知が別 URL になるのを防ぐ）。
+    戻り値: (url or None, "env" | "st.secrets" | "none")
+    """
+    env_u = _normalize_webhook_url(os.environ.get("WEBHOOK_URL"))
+    if env_u:
+        return env_u, "env"
     if hasattr(st, "secrets"):
         try:
-            u = str(st.secrets["WEBHOOK_URL"]).strip()
-            if u:
-                return u
+            sec_u = _normalize_webhook_url(str(st.secrets["WEBHOOK_URL"]))
+            if sec_u:
+                return sec_u, "st.secrets"
         except Exception:
             pass
-    u = os.environ.get("WEBHOOK_URL", "").strip()
-    return u if u else None
+    return None, "none"
 
 
 def _build_ai_notify_chat_body(
@@ -223,17 +241,18 @@ def send_inquiry_to_webhook(body: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
         except Exception:
             secrets_set = False
     logger.info("[webhook] WEBHOOK_URL st.secrets set: %s", secrets_set)
-    url = _get_webhook_url()
-    logger.info("[webhook] Resolved WEBHOOK URL configured (after secrets+env): %s", bool(url))
+    url, url_source = _get_webhook_url()
+    logger.info("[webhook] Resolved WEBHOOK URL configured: %s (source=%s)", bool(url), url_source)
     if not url:
         logger.warning("[webhook] WEBHOOK_URL not configured; skip POST")
         return False, None
     try:
+        # Google Chat は application/json が一般的（charset 付きで弾くプロキシ対策）
         resp = requests.post(
             url,
             json=body,
-            headers={"Content-Type": "application/json; charset=UTF-8"},
-            timeout=10,
+            headers={"Content-Type": "application/json"},
+            timeout=(5, 15),
         )
         logger.info("[webhook] POST status_code=%s", resp.status_code)
         if 200 <= resp.status_code < 300:
@@ -506,10 +525,39 @@ def _run_valuation_pipeline(
         if property_type in ("中古住宅（戸建て）", "中古マンション") and building_age_val:
             building_volume_zone_caption = format_building_volume_zone_caption(building_age_val)
 
+        # PDF より先に通知（PDF/Plotly が重くタイムアウトしても Chat に届くようにする）
+        status_text.info("✉️ Google Chat に通知送信中...")
+        webhook_body = _build_ai_notify_chat_body(
+            ptype_display=property_type,
+            address=address,
+            name=(contact_name or "").strip(),
+            phone=(contact_phone or "").strip(),
+            email=(contact_email or "").strip(),
+            land_m2=land_area_input,
+            bldg_m2=building_area_input,
+            excl_m2=exclusive_area_input,
+            age=int(building_age) if building_age is not None else 0,
+        )
+        ok_wh, err_wh = send_inquiry_to_webhook(webhook_body)
+        if ok_wh:
+            logger.info("[webhook] Notification sent OK")
+        else:
+            logger.warning("[webhook] Notification failed or skipped: %s", err_wh)
+
         status_text.info("📄 査定報告書（PDF）を作成中...")
-        price_chart = build_price_trend_chart(csv_filtered)
-        map_df = build_map_dataframe(lat, lon, csv_filtered)
-        df_pdf = build_csv_reference_table(csv_filtered, limit=MAX_REFERENCE_CASES, for_pdf=True)
+        # グラフ・表・地図データは独立しているため並列化して待ち時間を短縮
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            fut_chart = pool.submit(build_price_trend_chart, csv_filtered)
+            fut_map = pool.submit(build_map_dataframe, lat, lon, csv_filtered)
+            fut_tbl = pool.submit(
+                build_csv_reference_table,
+                csv_filtered,
+                MAX_REFERENCE_CASES,
+                True,
+            )
+            price_chart = fut_chart.result()
+            map_df = fut_map.result()
+            df_pdf = fut_tbl.result()
 
         pdf_bytes = None
         try:
@@ -552,24 +600,6 @@ def _run_valuation_pipeline(
             "building_volume_zone_caption": building_volume_zone_caption,
         }
         st.session_state.search_result = res_data
-
-        status_text.info("✉️ Google Chat に通知送信中...")
-        webhook_body = _build_ai_notify_chat_body(
-            ptype_display=property_type,
-            address=address,
-            name=(contact_name or "").strip(),
-            phone=(contact_phone or "").strip(),
-            email=(contact_email or "").strip(),
-            land_m2=land_area_input,
-            bldg_m2=building_area_input,
-            excl_m2=exclusive_area_input,
-            age=int(building_age) if building_age is not None else 0,
-        )
-        ok_wh, err_wh = send_inquiry_to_webhook(webhook_body)
-        if ok_wh:
-            logger.info("[webhook] Notification sent OK")
-        else:
-            logger.warning("[webhook] Notification failed or skipped: %s", err_wh)
 
         status_text.success("✅ 査定が完了しました！結果を表示します。")
         return True
@@ -1634,7 +1664,8 @@ def _plotly_fig_to_png(fig):
         if hasattr(fig, "savefig"):
             fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
         else:
-            buf.write(fig.to_image(format="png", scale=2))
+            # scale を下げると kaleido レンダリングが短くなる（画質は PDF 用途で十分）
+            buf.write(fig.to_image(format="png", scale=1))
         buf.seek(0)
         return buf.read()
     except Exception:
