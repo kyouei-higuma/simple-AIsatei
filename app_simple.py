@@ -1814,6 +1814,32 @@ if st.session_state.get("show_map"):
             st.session_state["show_map"] = False
             st.rerun()
 
+# URLパラメータがある場合は自動査定フラグを設定
+_from_form_html = st.session_state.get("_auto_run_satei", False)
+
+if _from_form_html and not st.session_state.get("_auto_run_done"):
+    # form.htmlから来た場合：フォームを表示せず直接査定実行
+    st.markdown("""
+<div style="background:#1a5fa8;color:#fff;padding:20px;border-radius:12px;text-align:center;font-size:20px;font-weight:700;margin-bottom:20px;">
+⏳ AI査定を実行中です。しばらくお待ちください...
+</div>
+""", unsafe_allow_html=True)
+    submitted = True
+    privacy_agree = True
+    contact_name = st.session_state.get("_qp_name", "")
+    contact_phone = st.session_state.get("_qp_phone", "")
+    contact_email = st.session_state.get("_qp_email", "")
+    address = st.session_state.get("address_value", "")
+    radius_km = 1.0
+    corner_check = False
+    st.session_state["_auto_run_done"] = True
+else:
+    submitted = False
+    privacy_agree = False
+    contact_name = ""
+    contact_phone = ""
+    contact_email = ""
+
 with st.form("search_form"):
     radius_km = 1.0
     st.info(f"💡 検索半径は自動で設定されます（**半径 {radius_km}km** で検索します）")
@@ -1826,19 +1852,16 @@ with st.form("search_form"):
     contact_email = st.text_input("メールアドレス（必須）", value=st.session_state.get("_qp_email", ""), placeholder="例: example@email.com")
     st.markdown("**個人情報の取り扱い（必須）**")
     st.markdown('<a href="https://www.kyouei-asahikawa.com/privacy.html" target="_blank" rel="noopener noreferrer">『個人情報の取り扱い等について』</a>をお読みいただき、ご同意のうえ査定してください。', unsafe_allow_html=True)
-    privacy_agree = st.checkbox("同意する", value=False, key="privacy_agree")
-    submitted = st.form_submit_button("査定を実行")
+    _auto_agree = st.session_state.get("_auto_run_satei", False)
+    privacy_agree = st.checkbox("同意する", value=_auto_agree, key="privacy_agree")
+    _form_submitted = st.form_submit_button("査定を実行")
+    if _form_submitted:
+        submitted = True
+        privacy_agree = privacy_agree
+        contact_name = contact_name
+        contact_phone = contact_phone
+        contact_email = contact_email
 
-
-# form.htmlから自動遷移した場合、同意済みとして自動査定
-if st.session_state.get("_auto_run_satei") and not st.session_state.get("_auto_run_done"):
-    st.session_state["_auto_run_done"] = True
-    submitted = True
-    privacy_agree = True
-    contact_name = st.session_state.get("_qp_name", "")
-    contact_phone = st.session_state.get("_qp_phone", "")
-    contact_email = st.session_state.get("_qp_email", "")
-    address = st.session_state.get("address_value", "")
 if submitted:
     try:
         if not contact_name or not contact_name.strip():
