@@ -1551,6 +1551,9 @@ def _init_from_query_params():
             val = params.get(k, "")
             if val: st.session_state[f"_qp_{k}"] = val
         st.session_state["_params_loaded"] = True
+        # form.htmlから来た場合（address + nameがある）は自動査定フラグをセット
+        if params.get("address", "") and params.get("name", ""):
+            st.session_state["_auto_run_satei"] = True
     except Exception:
         pass
 
@@ -1826,6 +1829,16 @@ with st.form("search_form"):
     privacy_agree = st.checkbox("同意する", value=False, key="privacy_agree")
     submitted = st.form_submit_button("査定を実行")
 
+
+# form.htmlから自動遷移した場合、同意済みとして自動査定
+if st.session_state.get("_auto_run_satei") and not st.session_state.get("_auto_run_done"):
+    st.session_state["_auto_run_done"] = True
+    submitted = True
+    privacy_agree = True
+    contact_name = st.session_state.get("_qp_name", "")
+    contact_phone = st.session_state.get("_qp_phone", "")
+    contact_email = st.session_state.get("_qp_email", "")
+    address = st.session_state.get("address_value", "")
 if submitted:
     try:
         if not contact_name or not contact_name.strip():
