@@ -173,13 +173,13 @@ LAND_MARKUP_RATE = 1.20
 LAND_UNDERPRICE_VS_MEAN_YEN = 2_000_000
 
 def _normalize_webhook_url(raw: Optional[str]) -> str:
-    """環境変数や secrets に付いた引用符・前後空白を除去。"""
+    """環境変数や secrets に付いた引用符・前後空白を除去（前後が一致しなくても除去）。"""
     if raw is None:
         return ""
     s = str(raw).strip()
-    if len(s) >= 2 and s[0] == s[-1] and s[0] in ("'", '"'):
-        s = s[1:-1].strip()
-    return s
+    # 前後どちらか一方だけ引用符がある場合も含めてすべて除去
+    s = s.strip("'\"")
+    return s.strip()
 
 
 def _get_webhook_url() -> Tuple[Optional[str], str]:
