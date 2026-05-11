@@ -215,21 +215,44 @@ def _build_ai_notify_chat_body(
     bldg_m2: Any,
     excl_m2: Any,
     age: Any,
+    valuation: Optional[float] = None,
+    avg_unit_price: Optional[float] = None,
+    csv_count: Optional[int] = None,
+    land_volume_zone_caption: Optional[str] = None,
+    building_volume_zone_caption: Optional[str] = None,
 ) -> Dict[str, str]:
     """Google Chat Incoming Webhook 用ペイロード（text のみ）。"""
-    text = (
-        "【AI査定通知】\n"
-        f"物件種別: {ptype_display}\n"
-        f"住所: {address}\n"
-        f"名前: {name}\n"
-        f"電話: {phone}\n"
-        f"メール: {email}\n"
-        f"土地面積: {land_m2}㎡\n"
-        f"建物面積: {bldg_m2}㎡\n"
-        f"専有面積: {excl_m2}㎡\n"
-        f"築年数: {age}年"
-    )
-    return {"text": text}
+    lines = [
+        "【AI査定】新規お問い合わせ",
+        "",
+        "■ お客様情報",
+        f"お名前: {name}",
+        f"電話番号: {phone}",
+        f"メール: {email}",
+        "",
+        "■ 物件情報",
+        f"住所: {address}",
+        f"種別: {ptype_display}",
+        f"土地: {land_m2}㎡ / 建物: {bldg_m2}㎡ / 専有: {excl_m2}㎡",
+        f"築年数: {age}年",
+    ]
+    if valuation is not None:
+        lines += [
+            "",
+            "■ 査定結果",
+            f"仮査定金額: *{valuation/10000:,.0f}万円*",
+        ]
+        if avg_unit_price:
+            tsubo = (avg_unit_price / 10000) * M2_TO_TSUBO
+            lines.append(f"坪単価: {tsubo:.1f}万円/坪（㎡単価: {avg_unit_price/10000:.1f}万円/㎡）")
+        if csv_count is not None:
+            lines.append(f"参照事例数: {csv_count}件")
+        if land_volume_zone_caption:
+            lines.append(f"土地ボリュームゾーン: {land_volume_zone_caption}")
+        if building_volume_zone_caption:
+            lines.append(f"建物ボリュームゾーン: {building_volume_zone_caption}")
+    lines += ["", f"送信日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"]
+    return {"text": "\n".join(lines)}
 
 
 def send_inquiry_to_webhook(body: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
@@ -541,6 +564,11 @@ def _run_valuation_pipeline(
             bldg_m2=building_area_input,
             excl_m2=exclusive_area_input,
             age=int(building_age) if building_age is not None else 0,
+            valuation=valuation,
+            avg_unit_price=avg_unit_price,
+            csv_count=csv_count,
+            land_volume_zone_caption=land_volume_zone_caption,
+            building_volume_zone_caption=building_volume_zone_caption,
         )
         ok_wh, err_wh = send_inquiry_to_webhook(webhook_body)
         if ok_wh:
