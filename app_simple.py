@@ -1564,15 +1564,17 @@ _init_from_query_params()
 _from_form_html = st.session_state.get("_auto_run_satei", False)
 if _from_form_html:
     st.markdown("""<style>
-/* 確認画面：入力ウィジェット・ヒーローを非表示 */
-div[data-testid="stRadio"],
-div[data-testid="stNumberInput"],
-div[data-testid="stTextInput"],
-div[data-testid="stCheckbox"],
-div[data-testid="stExpander"],
-div[data-testid="column"],
-[data-testid="stFormSubmitButton"],
-.stButton { display: none !important; }
+/* 確認画面：不要な要素を非表示 */
+div[data-testid="stRadio"] { display: none !important; }
+div[data-testid="stNumberInput"] { display: none !important; }
+div[data-testid="stTextInput"] { display: none !important; }
+div[data-testid="stCheckbox"] { display: none !important; }
+div[data-testid="stExpander"] { display: none !important; }
+[data-testid="stFormSubmitButton"] { display: none !important; }
+.stButton > button { display: none !important; }
+div[data-testid="stForm"] { border: none !important; padding: 0 !important; }
+/* ヒーローバナーを非表示 */
+div[data-testid="stMarkdownContainer"] > div > div[style*="linear-gradient"] { display: none !important; }
 </style>""", unsafe_allow_html=True)
 
 # 起動時に一度だけCSVを読み込み
@@ -1756,7 +1758,8 @@ if st.session_state.get("_auto_run_satei", False):
 </div>
 """, unsafe_allow_html=True)
 
-st.markdown("""
+if not _from_form_html:
+ st.markdown("""
 <div style="width: 100%; max-width: 800px; margin: -10px auto 0 auto; font-family: 'Helvetica Neue', Arial, sans-serif;">
 <div style="background: linear-gradient(135deg, #f0faff 0%, #e6f5ff 100%); border-radius: 15px; border: 2px solid #bde0fe; box-shadow: 0 10px 25px rgba(0,0,0,0.06); text-align: center; padding: 20px; position: relative; overflow: hidden;">
 <h1 style="font-size: 24px; color: #1a4f76; margin: 0 0 8px 0; font-weight: 800; line-height: 1.3;">スマホで最短1分査定！<br>旭川の家の価値、カンタン価格診断</h1>
@@ -1769,97 +1772,111 @@ st.markdown("""
 <div style="margin-bottom: 25px;"></div>
 """, unsafe_allow_html=True)
 
-st.markdown("**物件種別**")
-_ptype_options = ["土地", "中古住宅（戸建て）", "中古マンション"]
-_ptype_default = st.session_state.get("_qp_ptype", "土地")
-_ptype_index = _ptype_options.index(_ptype_default) if _ptype_default in _ptype_options else 0
-property_type = st.radio(
-    "種別",
-    options=_ptype_options,
-    horizontal=True,
-    label_visibility="collapsed",
-    key="property_type_selector",
-    index=_ptype_index,
-)
+if not _from_form_html:
+    st.markdown("**物件種別**")
+if not _from_form_html:
+    _ptype_options = ["土地", "中古住宅（戸建て）", "中古マンション"]
+    _ptype_default = st.session_state.get("_qp_ptype", "土地")
+    _ptype_index = _ptype_options.index(_ptype_default) if _ptype_default in _ptype_options else 0
+    property_type = st.radio(
+        "種別",
+        options=_ptype_options,
+        horizontal=True,
+        label_visibility="collapsed",
+        key="property_type_selector",
+        index=_ptype_index,
+    )
 
-if property_type == "土地":
-    land_unit = st.radio("土地面積の単位", ["坪", "㎡"], horizontal=True, key="land_unit_tochi")
-    if land_unit == "㎡":
-        land_area_input = st.number_input("土地面積（㎡）", min_value=1.0, max_value=10000.0, value=float(st.session_state.get("_qp_land_m2", 100.0)), step=1.0, key="land_area_tochi_m2")
+    if property_type == "土地":
+        land_unit = st.radio("土地面積の単位", ["坪", "㎡"], horizontal=True, key="land_unit_tochi")
+        if land_unit == "㎡":
+            land_area_input = st.number_input("土地面積（㎡）", min_value=1.0, max_value=10000.0, value=float(st.session_state.get("_qp_land_m2", 100.0)), step=1.0, key="land_area_tochi_m2")
+        else:
+            _land_m2_val = float(st.session_state.get("_qp_land_m2", 0))
+            _land_tsubo_default = round(_land_m2_val / M2_TO_TSUBO, 1) if _land_m2_val > 0 else 30.0
+            land_tsubo = st.number_input("土地面積（坪）", min_value=0.5, max_value=3500.0, value=_land_tsubo_default, step=0.5, key="land_area_tochi_tsubo")
+            land_area_input = land_tsubo * M2_TO_TSUBO
+        building_area_input = 0.0
+        exclusive_area_input = 0.0
+        building_age = 0
+    elif property_type == "中古住宅（戸建て）":
+        land_unit = st.radio("土地面積の単位", ["坪", "㎡"], horizontal=True, key="land_unit_house")
+        if land_unit == "㎡":
+            land_area_input = st.number_input("土地面積（㎡）", min_value=0.0, max_value=10000.0, value=float(st.session_state.get("_qp_land_m2", 100.0)), step=1.0, key="land_area_house_m2")
+        else:
+            _land_m2_h = float(st.session_state.get("_qp_land_m2", 0))
+            _land_tsubo_h = round(_land_m2_h / M2_TO_TSUBO, 1) if _land_m2_h > 0 else 30.0
+            land_tsubo = st.number_input("土地面積（坪）", min_value=0.0, max_value=3500.0, value=_land_tsubo_h, step=0.5, key="land_area_house_tsubo")
+            land_area_input = land_tsubo * M2_TO_TSUBO
+        bldg_unit = st.radio("建物延床面積の単位", ["坪", "㎡"], horizontal=True, key="bldg_unit_house")
+        if bldg_unit == "㎡":
+            building_area_input = st.number_input("建物延床面積（㎡）", min_value=1.0, max_value=1000.0, value=float(st.session_state.get("_qp_bldg_m2", 100.0)), step=1.0, key="bldg_area_house_m2")
+        else:
+            _bldg_m2_val = float(st.session_state.get("_qp_bldg_m2", 0))
+            _bldg_tsubo_default = round(_bldg_m2_val / M2_TO_TSUBO, 1) if _bldg_m2_val > 0 else 30.0
+            bldg_tsubo = st.number_input("建物延床面積（坪）", min_value=0.5, max_value=300.0, value=_bldg_tsubo_default, step=0.5, key="bldg_area_house_tsubo")
+            building_area_input = bldg_tsubo * M2_TO_TSUBO
+        exclusive_area_input = 0.0
+        building_age = st.number_input("築年数（年）", min_value=0, max_value=100, value=int(st.session_state.get("_qp_age", 0)), step=1, key="building_age_input")
     else:
-        _land_m2_val = float(st.session_state.get("_qp_land_m2", 0))
-        _land_tsubo_default = round(_land_m2_val / M2_TO_TSUBO, 1) if _land_m2_val > 0 else 30.0
-        land_tsubo = st.number_input("土地面積（坪）", min_value=0.5, max_value=3500.0, value=_land_tsubo_default, step=0.5, key="land_area_tochi_tsubo")
-        land_area_input = land_tsubo * M2_TO_TSUBO
-    building_area_input = 0.0
-    exclusive_area_input = 0.0
-    building_age = 0
-elif property_type == "中古住宅（戸建て）":
-    land_unit = st.radio("土地面積の単位", ["坪", "㎡"], horizontal=True, key="land_unit_house")
-    if land_unit == "㎡":
-        land_area_input = st.number_input("土地面積（㎡）", min_value=0.0, max_value=10000.0, value=float(st.session_state.get("_qp_land_m2", 100.0)), step=1.0, key="land_area_house_m2")
-    else:
-        _land_m2_h = float(st.session_state.get("_qp_land_m2", 0))
-        _land_tsubo_h = round(_land_m2_h / M2_TO_TSUBO, 1) if _land_m2_h > 0 else 30.0
-        land_tsubo = st.number_input("土地面積（坪）", min_value=0.0, max_value=3500.0, value=_land_tsubo_h, step=0.5, key="land_area_house_tsubo")
-        land_area_input = land_tsubo * M2_TO_TSUBO
-    bldg_unit = st.radio("建物延床面積の単位", ["坪", "㎡"], horizontal=True, key="bldg_unit_house")
-    if bldg_unit == "㎡":
-        building_area_input = st.number_input("建物延床面積（㎡）", min_value=1.0, max_value=1000.0, value=float(st.session_state.get("_qp_bldg_m2", 100.0)), step=1.0, key="bldg_area_house_m2")
-    else:
-        _bldg_m2_val = float(st.session_state.get("_qp_bldg_m2", 0))
-        _bldg_tsubo_default = round(_bldg_m2_val / M2_TO_TSUBO, 1) if _bldg_m2_val > 0 else 30.0
-        bldg_tsubo = st.number_input("建物延床面積（坪）", min_value=0.5, max_value=300.0, value=_bldg_tsubo_default, step=0.5, key="bldg_area_house_tsubo")
-        building_area_input = bldg_tsubo * M2_TO_TSUBO
-    exclusive_area_input = 0.0
-    building_age = st.number_input("築年数（年）", min_value=0, max_value=100, value=int(st.session_state.get("_qp_age", 0)), step=1, key="building_age_input")
-else:
-    land_area_input = 0.0
-    building_area_input = 0.0
-    exclusive_area_input = st.number_input("専有面積（㎡）", min_value=1.0, max_value=500.0, value=float(st.session_state.get("_qp_excl_m2", 50.0)), step=0.1, key="exclusive_area_mansion")
-    building_age = st.number_input("築年数（年）", min_value=0, max_value=100, value=int(st.session_state.get("_qp_age", 0)), step=1, key="building_age_mansion_input")
+        land_area_input = 0.0
+        building_area_input = 0.0
+        exclusive_area_input = st.number_input("専有面積（㎡）", min_value=1.0, max_value=500.0, value=float(st.session_state.get("_qp_excl_m2", 50.0)), step=0.1, key="exclusive_area_mansion")
+        building_age = st.number_input("築年数（年）", min_value=0, max_value=100, value=int(st.session_state.get("_qp_age", 0)), step=1, key="building_age_mansion_input")
 
-st.markdown("**住所**")
-st.caption("住所がわからない場合は「地図で選択」ボタンで地図から選べます")
-addr_col, map_col = st.columns([4, 1])
-with addr_col:
-    if st.session_state.get("address_from_map"):
-        st.session_state["address_value"] = st.session_state.pop("address_from_map")
-    if "address_value" not in st.session_state:
-        st.session_state["address_value"] = ""
-    address = st.text_input("住所", value=st.session_state["address_value"], placeholder="例: 北海道旭川市神居一条18丁目", label_visibility="collapsed")
-    st.session_state["address_value"] = address
-with map_col:
-    map_btn = st.button("🗺️ 地図で選択", use_container_width=True)
+    st.markdown("**住所**")
+    st.caption("住所がわからない場合は「地図で選択」ボタンで地図から選べます")
+    addr_col, map_col = st.columns([4, 1])
+    with addr_col:
+        if st.session_state.get("address_from_map"):
+            st.session_state["address_value"] = st.session_state.pop("address_from_map")
+        if "address_value" not in st.session_state:
+            st.session_state["address_value"] = ""
+        address = st.text_input("住所", value=st.session_state["address_value"], placeholder="例: 北海道旭川市神居一条18丁目", label_visibility="collapsed")
+        st.session_state["address_value"] = address
+    with map_col:
+        map_btn = st.button("🗺️ 地図で選択", use_container_width=True)
 
-if map_btn:
-    if "show_map" not in st.session_state or not st.session_state.get("show_map"):
-        st.session_state["show_map"] = True
-    st.rerun()
+    if map_btn:
+        if "show_map" not in st.session_state or not st.session_state.get("show_map"):
+            st.session_state["show_map"] = True
+        st.rerun()
 
-if st.session_state.get("show_map"):
-    with st.expander("地図で住所を選択（地図をクリックすると住所が自動入力されます）", expanded=True):
-        import folium
-        from streamlit_folium import st_folium
-        m = folium.Map(location=[43.77, 142.36], zoom_start=12)
-        map_data = st_folium(m, height=400, key="address_map")
-        clicked = (map_data or {}).get("last_clicked")
-        if clicked:
-            lat = clicked.get("lat")
-            lng = clicked.get("lng")
-            if lat is not None and lng is not None:
-                with st.spinner("住所を取得しています..."):
-                    addr = reverse_geocode(lat, lng)
-                if addr:
-                    st.session_state["address_from_map"] = addr
-                    st.session_state["show_map"] = False
-                    st.success(f"住所を設定しました: {addr}")
-                    st.rerun()
-                else:
-                    st.warning("この位置の住所を取得できませんでした。別の場所をクリックしてください。")
-        if st.button("地図を閉じる"):
-            st.session_state["show_map"] = False
-            st.rerun()
+    if st.session_state.get("show_map"):
+        with st.expander("地図で住所を選択（地図をクリックすると住所が自動入力されます）", expanded=True):
+            import folium
+            from streamlit_folium import st_folium
+            m = folium.Map(location=[43.77, 142.36], zoom_start=12)
+            map_data = st_folium(m, height=400, key="address_map")
+            clicked = (map_data or {}).get("last_clicked")
+            if clicked:
+                lat = clicked.get("lat")
+                lng = clicked.get("lng")
+                if lat is not None and lng is not None:
+                    with st.spinner("住所を取得しています..."):
+                        addr = reverse_geocode(lat, lng)
+                    if addr:
+                        st.session_state["address_from_map"] = addr
+                        st.session_state["show_map"] = False
+                        st.success(f"住所を設定しました: {addr}")
+                        st.rerun()
+                    else:
+                        st.warning("この位置の住所を取得できませんでした。別の場所をクリックしてください。")
+            if st.button("地図を閉じる"):
+                st.session_state["show_map"] = False
+                st.rerun()
+
+# form.htmlから来た場合、入力値をセッションから復元
+if _from_form_html:
+    property_type = st.session_state.get("_qp_ptype", "土地")
+    _land_m2 = float(st.session_state.get("_qp_land_m2", 0))
+    _bldg_m2 = float(st.session_state.get("_qp_bldg_m2", 0))
+    _excl_m2 = float(st.session_state.get("_qp_excl_m2", 0))
+    land_area_input = _land_m2
+    building_area_input = _bldg_m2
+    exclusive_area_input = _excl_m2
+    building_age = int(st.session_state.get("_qp_age", 0))
+    address = st.session_state.get("address_value", "")
 
 with st.form("search_form"):
     radius_km = 1.0
