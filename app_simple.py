@@ -1992,19 +1992,19 @@ def _generate_valuation_pdf_impl(address, property_type, area_input, building_ag
     ]
     _logo_path = next((p for p in _logo_candidates if p.exists()), None)
     if _logo_path:
-        # アスペクト比を保ちながら高さ20mmに合わせる
-        try:
-            from PIL import Image as PILImage
-            _pil = PILImage.open(str(_logo_path))
-            _pw, _ph = _pil.size
-            _logo_h = 20 * mm
-            _logo_w = _logo_h * (_pw / _ph)
-        except Exception:
-            _logo_h = 20 * mm
-            _logo_w = 50 * mm
+        # 既知の寸法から高さ25mmに固定してアスペクト比を計算
+        _known_sizes = {
+            "company_logo_large.png": (3368, 2382),  # 横長
+            "company_logo.png":       (1191, 1684),  # 縦長
+            "company_logo_resized.png": (141, 200),  # 縦長
+        }
+        _fname = _logo_path.name
+        _pw, _ph = _known_sizes.get(_fname, (1, 1))
+        _logo_h = 25 * mm
+        _logo_w = _logo_h * (_pw / _ph) if _ph > 0 else 35 * mm
         logo_img = Image(str(_logo_path), width=_logo_w, height=_logo_h)
         logo_img.hAlign = "LEFT"
-        _col_w = _logo_w + 6 * mm
+        _col_w = _logo_w + 8 * mm
         footer_table = Table(
             [[logo_img, company_texts]],
             colWidths=[_col_w, page_w - _col_w],
