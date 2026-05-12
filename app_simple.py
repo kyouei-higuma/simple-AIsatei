@@ -1973,7 +1973,17 @@ def _generate_valuation_pdf_impl(address, property_type, area_input, building_ag
     two_col_table = Table([[left_cell_contents, right_cell_contents]], colWidths=[left_w, right_w])
     two_col_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (0, -1), 5*mm), ("RIGHTPADDING", (0, 0), (0, -1), 4*mm), ("LEFTPADDING", (1, 0), (1, -1), 6*mm), ("RIGHTPADDING", (1, 0), (1, -1), 0), ("TOPPADDING", (0, 0), (-1, -1), 2*mm), ("BOTTOMPADDING", (0, 0), (-1, -1), 2*mm)]))
     elements.append(two_col_table)
-    elements.append(Spacer(1, 6))
+    elements.append(Spacer(1, 8))
+    # ── フッター：会社情報 ──────────────────────────────────────
+    from reportlab.platypus import HRFlowable
+    elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.grey))
+    elements.append(Spacer(1, 3))
+    company_style = ParagraphStyle(name="Company", fontName=font_name, fontSize=8, textColor=colors.HexColor("#555555"), alignment=2)
+    elements.append(Paragraph(
+        "株式会社 杏栄　〒078-8367 旭川市永山2条19丁目4－1　TEL: 0166-48-2349",
+        company_style,
+    ))
+    # ────────────────────────────────────────────────────────────
     doc.build(elements)
     buf.seek(0)
     return buf.read()
