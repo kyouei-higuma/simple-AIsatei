@@ -1984,24 +1984,35 @@ def _generate_valuation_pdf_impl(address, property_type, area_input, building_ag
         Paragraph("株式会社 杏栄", company_name_style),
         Paragraph("〒078-8367　旭川市永山2条19丁目4－1　TEL: 0166-48-2349", company_info_style),
     ]
-    # ロゴ画像を読み込む
+    # ロゴ画像を読み込む（横長優先）
     _logo_candidates = [
-        Path(__file__).parent / "assets" / "company_logo.png",
         Path(__file__).parent / "assets" / "company_logo_large.png",
+        Path(__file__).parent / "assets" / "company_logo.png",
         Path(__file__).parent / "assets" / "company_logo_resized.png",
     ]
     _logo_path = next((p for p in _logo_candidates if p.exists()), None)
     if _logo_path:
-        logo_img = Image(str(_logo_path), width=50*mm, height=20*mm)
+        # アスペクト比を保ちながら高さ20mmに合わせる
+        try:
+            from PIL import Image as PILImage
+            _pil = PILImage.open(str(_logo_path))
+            _pw, _ph = _pil.size
+            _logo_h = 20 * mm
+            _logo_w = _logo_h * (_pw / _ph)
+        except Exception:
+            _logo_h = 20 * mm
+            _logo_w = 50 * mm
+        logo_img = Image(str(_logo_path), width=_logo_w, height=_logo_h)
         logo_img.hAlign = "LEFT"
+        _col_w = _logo_w + 6 * mm
         footer_table = Table(
             [[logo_img, company_texts]],
-            colWidths=[54*mm, page_w - 54*mm],
+            colWidths=[_col_w, page_w - _col_w],
         )
         footer_table.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("LEFTPADDING", (0, 0), (0, -1), 0),
-            ("RIGHTPADDING", (0, 0), (0, -1), 6*mm),
+            ("RIGHTPADDING", (0, 0), (0, -1), 6 * mm),
             ("LEFTPADDING", (1, 0), (1, -1), 0),
             ("RIGHTPADDING", (1, 0), (1, -1), 4),
             ("TOPPADDING", (0, 0), (-1, -1), 2),
