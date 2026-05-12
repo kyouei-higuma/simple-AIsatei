@@ -1992,16 +1992,18 @@ def _generate_valuation_pdf_impl(address, property_type, area_input, building_ag
     ]
     _logo_path = next((p for p in _logo_candidates if p.exists()), None)
     if _logo_path:
-        logo_img = Image(str(_logo_path), width=30*mm, height=12*mm)
+        logo_img = Image(str(_logo_path), width=50*mm, height=20*mm)
         logo_img.hAlign = "LEFT"
         footer_table = Table(
             [[logo_img, company_texts]],
-            colWidths=[34*mm, page_w - 34*mm],
+            colWidths=[54*mm, page_w - 54*mm],
         )
         footer_table.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 0),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING", (0, 0), (0, -1), 0),
+            ("RIGHTPADDING", (0, 0), (0, -1), 6*mm),
+            ("LEFTPADDING", (1, 0), (1, -1), 0),
+            ("RIGHTPADDING", (1, 0), (1, -1), 4),
             ("TOPPADDING", (0, 0), (-1, -1), 2),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
         ]))
