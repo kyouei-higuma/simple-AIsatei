@@ -1978,11 +1978,9 @@ def _generate_valuation_pdf_impl(address, property_type, area_input, building_ag
     from reportlab.platypus import HRFlowable
     elements.append(HRFlowable(width="100%", thickness=0.8, color=colors.HexColor("#cccccc")))
     elements.append(Spacer(1, 4))
-    company_name_style = ParagraphStyle(name="CompanyName", fontName=font_name, fontSize=12, textColor=colors.HexColor("#1a1a1a"), leading=16)
     company_info_style = ParagraphStyle(name="CompanyInfo", fontName=font_name, fontSize=10, textColor=colors.HexColor("#444444"), leading=14)
     company_texts = [
-        Paragraph("株式会社 杏栄", company_name_style),
-        Paragraph("〒078-8367　旭川市永山2条19丁目4－1　TEL: 0166-48-2349", company_info_style),
+        Paragraph("〒079-8412　旭川市永山2条19丁目4－1　TEL: 0166-48-2349", company_info_style),
     ]
     # ロゴ画像を読み込む（横長優先）
     _logo_candidates = [
@@ -2000,8 +1998,8 @@ def _generate_valuation_pdf_impl(address, property_type, area_input, building_ag
         }
         _fname = _logo_path.name
         _pw, _ph = _known_sizes.get(_fname, (1, 1))
-        _logo_h = 25 * mm
-        _logo_w = _logo_h * (_pw / _ph) if _ph > 0 else 35 * mm
+        _logo_h = 50 * mm
+        _logo_w = _logo_h * (_pw / _ph) if _ph > 0 else 70 * mm
         logo_img = Image(str(_logo_path), width=_logo_w, height=_logo_h)
         logo_img.hAlign = "LEFT"
         _col_w = _logo_w + 8 * mm
