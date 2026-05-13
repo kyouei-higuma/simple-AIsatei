@@ -1,9 +1,9 @@
 name: Keep Render app alive
 
 on:
-  schedule:
-    # 10分おきに実行（Render フリープランは15分でスリープするため）
-    - cron: "*/10 * * * *"
+  # 有料プランのためスリープなし → スケジュール実行を無効化
+  # schedule:
+  #   - cron: "*/10 * * * *"
   workflow_dispatch:
 
 jobs:
