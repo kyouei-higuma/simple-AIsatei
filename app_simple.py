@@ -2103,7 +2103,7 @@ def _generate_valuation_pdf_impl(address, property_type, area_input, building_ag
         ]))
         elements.append(footer_table)
     else:
-        elements.append(Paragraph("株式会社 杏栄", company_name_style))
+        elements.append(Paragraph("株式会社 杏栄", company_info_style))
         elements.append(Paragraph("〒078-8367　旭川市永山2条19丁目4－1　TEL: 0166-48-2349", company_info_style))
     # ────────────────────────────────────────────────────────────
     doc.build(elements)
