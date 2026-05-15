@@ -120,11 +120,30 @@ st.markdown("""
     border-left: 4px solid #1a5fa8 !important;
 }
 
-/* ── サイドバー ── */
+/* ── サイドバー（ダークネイビー） ── */
 [data-testid="stSidebar"] {
-    background: #e8f2fd !important;
+    background: linear-gradient(180deg, #12213d 0%, #1a3560 100%) !important;
+    border-right: none !important;
+    box-shadow: 3px 0 16px rgba(0,0,0,0.18) !important;
 }
-[data-testid="stSidebar"] .stMarkdown { color: #1a3a6b; }
+[data-testid="stSidebar"] * { color: #dce8ff !important; }
+[data-testid="stSidebar"] .stMarkdown h3 {
+    color: #7eb6ff !important;
+    font-size: 0.78rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.08em !important;
+    text-transform: uppercase !important;
+    border-bottom: 1px solid rgba(126,182,255,0.25) !important;
+    padding-bottom: 5px !important;
+}
+[data-testid="stSidebar"] hr {
+    border-color: rgba(255,255,255,0.1) !important;
+}
+[data-testid="stSidebar"] [data-testid="stNotification"] {
+    background: rgba(126,182,255,0.15) !important;
+    border: 1px solid rgba(126,182,255,0.3) !important;
+    border-radius: 8px !important;
+}
 
 /* ── selectbox ── */
 .stSelectbox select {
