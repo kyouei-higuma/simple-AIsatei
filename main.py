@@ -33,7 +33,7 @@ M2_TO_TSUBO = 3.30578  # 1坪 = 3.30578㎡（坪単価換算用）
 
 # ページ設定
 st.set_page_config(
-    page_title="不動産仮査定",
+    page_title="不動産仮査定 v2",
     page_icon="🏠",
     layout="wide",
     initial_sidebar_state="expanded",
