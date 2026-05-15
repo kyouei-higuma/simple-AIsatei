@@ -39,6 +39,105 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+st.markdown("""
+<style>
+[data-testid="stToolbar"] { display: none !important; }
+[data-testid="stHeader"]  { background: transparent !important; }
+.block-container { padding-top: 1.4rem !important; max-width: 1500px !important; }
+body, .stApp { background: #f2f6fc !important; }
+
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #12213d 0%, #1a3560 100%) !important;
+    border-right: none !important;
+    box-shadow: 3px 0 16px rgba(0,0,0,0.18) !important;
+}
+[data-testid="stSidebar"] * { color: #dce8ff !important; }
+[data-testid="stSidebar"] .stMarkdown h3 {
+    color: #7eb6ff !important;
+    font-size: 0.78rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.08em !important;
+    text-transform: uppercase !important;
+    border-bottom: 1px solid rgba(126,182,255,0.25) !important;
+    padding-bottom: 5px !important;
+    margin-bottom: 8px !important;
+}
+[data-testid="stSidebar"] hr { border-color: rgba(255,255,255,0.1) !important; margin: 0.7rem 0 !important; }
+[data-testid="stSidebar"] .stNumberInput input {
+    background: rgba(255,255,255,0.1) !important;
+    border: 1px solid rgba(126,182,255,0.35) !important;
+    color: #fff !important;
+    border-radius: 7px !important;
+}
+[data-testid="stSidebar"] [data-testid="stNotification"] {
+    background: rgba(126,182,255,0.15) !important;
+    border: 1px solid rgba(126,182,255,0.3) !important;
+    border-radius: 8px !important;
+}
+
+.app-header {
+    background: linear-gradient(135deg, #1a3560 0%, #2355a0 100%);
+    border-radius: 14px;
+    padding: 18px 28px 16px;
+    margin-bottom: 18px;
+    box-shadow: 0 4px 20px rgba(26,53,96,0.18);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+.app-header-title { color: #fff !important; font-size: 1.65rem !important; font-weight: 800 !important; letter-spacing: -0.02em !important; line-height: 1.2 !important; margin: 0 !important; }
+.app-header-sub { color: rgba(255,255,255,0.65) !important; font-size: 0.8rem !important; margin: 2px 0 0 0 !important; }
+
+div[data-testid="column"]:first-child {
+    background: linear-gradient(160deg, #ffffff 0%, #eef4ff 100%) !important;
+    padding: 1.3rem 1.2rem 1.6rem !important;
+    border-radius: 14px !important;
+    border: 1px solid #ccdaf5 !important;
+    box-shadow: 0 2px 16px rgba(26,53,96,0.09) !important;
+    margin-right: 0.8rem !important;
+}
+
+h2, h3 { color: #1a3560 !important; font-weight: 700 !important; }
+.stSubheader { color: #1a3560 !important; font-weight: 700 !important; }
+
+.stButton > button,
+.stFormSubmitButton > button {
+    background: linear-gradient(135deg, #2e72dc 0%, #1a4faa 100%) !important;
+    color: #fff !important; border: none !important; border-radius: 9px !important;
+    font-weight: 700 !important; font-size: 15px !important; padding: 10px 22px !important;
+    width: 100% !important; box-shadow: 0 3px 10px rgba(46,114,220,0.35) !important;
+    transition: all 0.18s ease !important; letter-spacing: 0.02em !important;
+}
+.stButton > button:hover, .stFormSubmitButton > button:hover {
+    opacity: 0.9 !important; box-shadow: 0 5px 18px rgba(46,114,220,0.45) !important; transform: translateY(-1px) !important;
+}
+
+.stTextInput input, .stNumberInput input {
+    border: 1.5px solid #c2d4f0 !important; border-radius: 8px !important;
+    background: #fff !important; color: #1a3560 !important;
+}
+.stTextInput input:focus, .stNumberInput input:focus {
+    border-color: #2e72dc !important; box-shadow: 0 0 0 3px rgba(46,114,220,0.12) !important;
+}
+
+[data-testid="stSlider"] [role="slider"] {
+    background: #2e72dc !important; border: 2px solid #fff !important;
+    box-shadow: 0 1px 6px rgba(46,114,220,0.4) !important;
+}
+
+.stMultiSelect [data-baseweb="tag"] { background: #2e72dc !important; border-radius: 6px !important; }
+.stRadio label, .stCheckbox label { color: #1a3560 !important; font-weight: 600 !important; }
+hr { border-color: #ccdaf5 !important; margin: 0.8rem 0 !important; }
+
+[data-testid="stMetric"] {
+    background: #fff !important; border: 1px solid #ccdaf5 !important;
+    border-radius: 10px !important; padding: 12px 16px !important;
+    box-shadow: 0 1px 6px rgba(26,53,96,0.07) !important;
+}
+[data-testid="stNotification"] { border-radius: 10px !important; }
+</style>
+""", unsafe_allow_html=True)
+
 # 定数
 MAX_REFERENCE_CASES = 20
 
@@ -1535,193 +1634,6 @@ with st.sidebar:
         help="中古戸建の場合、この築年数で建物価値を補正します（築25年以上は土地のみ）",
     )
 
-st.markdown("""
-<style>
-/* ══════════════════════════════════════════
-   グローバル / ページ全体
-══════════════════════════════════════════ */
-[data-testid="stToolbar"] { display: none !important; }
-[data-testid="stHeader"]  { background: transparent !important; }
-
-.block-container {
-    padding-top: 1.4rem !important;
-    max-width: 1500px !important;
-}
-
-body, .stApp {
-    background: #f2f6fc !important;
-    font-family: 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif !important;
-}
-
-/* ══════════════════════════════════════════
-   サイドバー（ダークネイビー）
-══════════════════════════════════════════ */
-[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #12213d 0%, #1a3560 100%) !important;
-    border-right: none !important;
-    box-shadow: 3px 0 16px rgba(0,0,0,0.18) !important;
-}
-[data-testid="stSidebar"] * { color: #dce8ff !important; }
-
-[data-testid="stSidebar"] .stMarkdown h3 {
-    color: #7eb6ff !important;
-    font-size: 0.78rem !important;
-    font-weight: 700 !important;
-    letter-spacing: 0.08em !important;
-    text-transform: uppercase !important;
-    border-bottom: 1px solid rgba(126,182,255,0.25) !important;
-    padding-bottom: 5px !important;
-    margin-bottom: 8px !important;
-}
-[data-testid="stSidebar"] hr {
-    border-color: rgba(255,255,255,0.1) !important;
-    margin: 0.7rem 0 !important;
-}
-[data-testid="stSidebar"] .stNumberInput input {
-    background: rgba(255,255,255,0.1) !important;
-    border: 1px solid rgba(126,182,255,0.35) !important;
-    color: #fff !important;
-    border-radius: 7px !important;
-}
-[data-testid="stSidebar"] [data-testid="stNotification"] {
-    background: rgba(126,182,255,0.15) !important;
-    border: 1px solid rgba(126,182,255,0.3) !important;
-    border-radius: 8px !important;
-}
-
-/* ══════════════════════════════════════════
-   ページタイトル
-══════════════════════════════════════════ */
-.app-header {
-    background: linear-gradient(135deg, #1a3560 0%, #2355a0 100%);
-    border-radius: 14px;
-    padding: 18px 28px 16px;
-    margin-bottom: 18px;
-    box-shadow: 0 4px 20px rgba(26,53,96,0.18);
-    display: flex;
-    align-items: center;
-    gap: 14px;
-}
-.app-header-icon { font-size: 2rem; }
-.app-header-title {
-    color: #fff !important;
-    font-size: 1.65rem !important;
-    font-weight: 800 !important;
-    letter-spacing: -0.02em !important;
-    line-height: 1.2 !important;
-    margin: 0 !important;
-}
-.app-header-sub {
-    color: rgba(255,255,255,0.65) !important;
-    font-size: 0.8rem !important;
-    margin: 2px 0 0 0 !important;
-}
-
-/* ══════════════════════════════════════════
-   操作パネル（左カラム）
-══════════════════════════════════════════ */
-div[data-testid="column"]:first-child {
-    background: linear-gradient(160deg, #ffffff 0%, #eef4ff 100%) !important;
-    padding: 1.3rem 1.2rem 1.6rem !important;
-    border-radius: 14px !important;
-    border: 1px solid #ccdaf5 !important;
-    box-shadow: 0 2px 16px rgba(26,53,96,0.09) !important;
-    margin-right: 0.8rem !important;
-}
-
-/* ══════════════════════════════════════════
-   見出し
-══════════════════════════════════════════ */
-h2, h3 { color: #1a3560 !important; font-weight: 700 !important; }
-.stSubheader { color: #1a3560 !important; font-weight: 700 !important; }
-
-/* ══════════════════════════════════════════
-   ボタン
-══════════════════════════════════════════ */
-.stButton > button,
-.stFormSubmitButton > button {
-    background: linear-gradient(135deg, #2e72dc 0%, #1a4faa 100%) !important;
-    color: #fff !important;
-    border: none !important;
-    border-radius: 9px !important;
-    font-weight: 700 !important;
-    font-size: 15px !important;
-    padding: 10px 22px !important;
-    width: 100% !important;
-    box-shadow: 0 3px 10px rgba(46,114,220,0.35) !important;
-    transition: all 0.18s ease !important;
-    letter-spacing: 0.02em !important;
-}
-.stButton > button:hover,
-.stFormSubmitButton > button:hover {
-    opacity: 0.9 !important;
-    box-shadow: 0 5px 18px rgba(46,114,220,0.45) !important;
-    transform: translateY(-1px) !important;
-}
-
-/* ══════════════════════════════════════════
-   テキスト入力 / 数値入力
-══════════════════════════════════════════ */
-.stTextInput input, .stNumberInput input {
-    border: 1.5px solid #c2d4f0 !important;
-    border-radius: 8px !important;
-    background: #fff !important;
-    color: #1a3560 !important;
-    transition: border-color 0.15s !important;
-}
-.stTextInput input:focus, .stNumberInput input:focus {
-    border-color: #2e72dc !important;
-    box-shadow: 0 0 0 3px rgba(46,114,220,0.12) !important;
-}
-
-/* ══════════════════════════════════════════
-   スライダー
-══════════════════════════════════════════ */
-[data-testid="stSlider"] [role="slider"] {
-    background: #2e72dc !important;
-    border: 2px solid #fff !important;
-    box-shadow: 0 1px 6px rgba(46,114,220,0.4) !important;
-}
-
-/* ══════════════════════════════════════════
-   マルチセレクト / ラジオ / チェックボックス
-══════════════════════════════════════════ */
-.stMultiSelect [data-baseweb="tag"] {
-    background: #2e72dc !important;
-    border-radius: 6px !important;
-}
-.stRadio label, .stCheckbox label {
-    color: #1a3560 !important;
-    font-weight: 600 !important;
-}
-
-/* ══════════════════════════════════════════
-   区切り線
-══════════════════════════════════════════ */
-hr {
-    border-color: #ccdaf5 !important;
-    margin: 0.8rem 0 !important;
-}
-
-/* ══════════════════════════════════════════
-   メトリクス・結果表示
-══════════════════════════════════════════ */
-[data-testid="stMetric"] {
-    background: #fff !important;
-    border: 1px solid #ccdaf5 !important;
-    border-radius: 10px !important;
-    padding: 12px 16px !important;
-    box-shadow: 0 1px 6px rgba(26,53,96,0.07) !important;
-}
-
-/* ══════════════════════════════════════════
-   通知ボックス（info / warning / success）
-══════════════════════════════════════════ */
-[data-testid="stNotification"] {
-    border-radius: 10px !important;
-}
-</style>
-""", unsafe_allow_html=True)
 
 st.markdown("""
 <div class="app-header">
