@@ -190,6 +190,9 @@ M2_TO_TSUBO = 3.30578
 LAND_MARKUP_RATE = 1.20
 LAND_UNDERPRICE_VS_MEAN_YEN = 2_000_000
 
+# 査定結果の Google Chat 送信（一時停止中。復旧時は True に変更）
+WEBHOOK_SEND_ENABLED = False
+
 def _normalize_webhook_url(raw: Optional[str]) -> str:
     """
     環境変数や secrets に付いた引用符・前後空白・KEY=VALUE 形式を正規化して URL だけを返す。
@@ -209,8 +212,10 @@ def _get_webhook_url() -> Tuple[Optional[str], str]:
     """
     Google Chat Incoming Webhook の URL。
     非空の環境変数 WEBHOOK_URL を最優先（Cloud Run 等で secrets と食い違うと通知が別 URL になるのを防ぐ）。
-    戻り値: (url or None, "env" | "st.secrets" | "none")
+    戻り値: (url or None, "env" | "st.secrets" | "none" | "disabled")
     """
+    if not WEBHOOK_SEND_ENABLED:
+        return None, "disabled"
     env_u = _normalize_webhook_url(os.environ.get("WEBHOOK_URL"))
     if env_u:
         return env_u, "env"
@@ -575,34 +580,37 @@ def _run_valuation_pipeline(
         if property_type in ("中古住宅（戸建て）", "中古マンション") and building_age_val:
             building_volume_zone_caption = format_building_volume_zone_caption(building_age_val)
 
-        status_text.info("✉️ Google Chat に通知送信中...")
-        webhook_body = _build_ai_notify_chat_body(
-            ptype_display=property_type,
-            address=address,
-            name=(contact_name or "").strip(),
-            phone=(contact_phone or "").strip(),
-            email=(contact_email or "").strip(),
-            land_m2=land_area_input,
-            bldg_m2=building_area_input,
-            excl_m2=exclusive_area_input,
-            age=int(building_age) if building_age is not None else 0,
-            valuation=valuation,
-            avg_unit_price=avg_unit_price,
-            csv_count=csv_count,
-            land_volume_zone_caption=land_volume_zone_caption,
-            building_volume_zone_caption=building_volume_zone_caption,
-        )
-        ok_wh, err_wh = send_inquiry_to_webhook(webhook_body)
-        if ok_wh:
-            logger.info("[webhook] Notification sent OK")
-            st.toast("✅ Google Chat に通知を送信しました", icon="✅")
-        else:
-            logger.warning("[webhook] Notification failed or skipped: %s", err_wh)
-            _wh_url_check, _wh_src_check = _get_webhook_url()
-            if not _wh_url_check:
-                st.warning("⚠️ WEBHOOK_URL が未設定です。Render の環境変数を確認してください。")
+        if WEBHOOK_SEND_ENABLED:
+            status_text.info("✉️ Google Chat に通知送信中...")
+            webhook_body = _build_ai_notify_chat_body(
+                ptype_display=property_type,
+                address=address,
+                name=(contact_name or "").strip(),
+                phone=(contact_phone or "").strip(),
+                email=(contact_email or "").strip(),
+                land_m2=land_area_input,
+                bldg_m2=building_area_input,
+                excl_m2=exclusive_area_input,
+                age=int(building_age) if building_age is not None else 0,
+                valuation=valuation,
+                avg_unit_price=avg_unit_price,
+                csv_count=csv_count,
+                land_volume_zone_caption=land_volume_zone_caption,
+                building_volume_zone_caption=building_volume_zone_caption,
+            )
+            ok_wh, err_wh = send_inquiry_to_webhook(webhook_body)
+            if ok_wh:
+                logger.info("[webhook] Notification sent OK")
+                st.toast("✅ Google Chat に通知を送信しました", icon="✅")
             else:
-                st.warning(f"⚠️ Google Chat 通知エラー（{_wh_src_check}）: {err_wh or '詳細はサーバーログを確認'}")
+                logger.warning("[webhook] Notification failed or skipped: %s", err_wh)
+                _wh_url_check, _wh_src_check = _get_webhook_url()
+                if not _wh_url_check:
+                    st.warning("⚠️ WEBHOOK_URL が未設定です。Render の環境変数を確認してください。")
+                else:
+                    st.warning(f"⚠️ Google Chat 通知エラー（{_wh_src_check}）: {err_wh or '詳細はサーバーログを確認'}")
+        else:
+            logger.info("[webhook] Temporarily disabled; skip notification")
 
         # 価格グラフ（UI表示用）のみここで生成。PDF生成は結果表示後に遅延実行
         _t2 = _time.perf_counter()
@@ -2253,12 +2261,14 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### 🔔 Chat通知の確認")
     _wh_url, _wh_src = _get_webhook_url()
-    if _wh_url:
+    if not WEBHOOK_SEND_ENABLED:
+        st.info("Chat通知: ⏸ 一時停止中（`WEBHOOK_SEND_ENABLED = False`）")
+    elif _wh_url:
         st.success(f"URL設定: ✅ あり（{_wh_src}）")
     else:
         st.error("URL設定: ❌ なし\n\n`WEBHOOK_URL` を Streamlit Cloud の Secrets または環境変数に設定してください。")
 
-    if st.button("📨 テスト通知を送信"):
+    if st.button("📨 テスト通知を送信", disabled=not WEBHOOK_SEND_ENABLED):
         if not _wh_url:
             st.sidebar.error("WEBHOOK_URL が未設定です。")
         else:
