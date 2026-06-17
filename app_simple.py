@@ -281,21 +281,124 @@ def _build_ai_notify_chat_body(
 
 def _build_staff_valuation_request_body(sr: Dict[str, Any]) -> Dict[str, str]:
     """担当者査定希望ボタン用の Chat ペイロード。"""
-    valuation = sr.get("valuation")
-    val_line = f"仮査定金額: {valuation / 10000:,.0f}万円" if valuation else "仮査定金額: -"
+    return _build_staff_request_chat_body({
+        "contact_name": sr.get("contact_name"),
+        "contact_phone": sr.get("contact_phone"),
+        "contact_email": sr.get("contact_email"),
+        "address": sr.get("address"),
+        "property_type": sr.get("property_type"),
+        "land_area_input": sr.get("land_area_input"),
+        "building_area_input": sr.get("building_area_input"),
+        "exclusive_area_input": sr.get("exclusive_area_input"),
+        "building_age": sr.get("building_age"),
+        "valuation": sr.get("valuation"),
+        "note": sr.get("note"),
+    })
+
+
+def _build_staff_request_chat_body(fields: Dict[str, Any]) -> Dict[str, str]:
+    """担当者査定希望（フォーム・結果ページ共通）の Chat ペイロード。"""
+    valuation = fields.get("valuation")
+    val_line = f"仮査定金額: {valuation / 10000:,.0f}万円" if valuation else None
+    land_m2 = fields.get("land_area_input", fields.get("land_m2"))
+    bldg_m2 = fields.get("building_area_input", fields.get("bldg_m2"))
+    excl_m2 = fields.get("exclusive_area_input", fields.get("excl_m2"))
+    age = fields.get("building_age", fields.get("age", 0))
     lines = [
         "担当者査定希望",
         "",
-        f"お名前: {sr.get('contact_name') or '-'}",
-        f"電話番号: {sr.get('contact_phone') or '-'}",
-        f"メール: {sr.get('contact_email') or '-'}",
-        f"住所: {sr.get('address') or '-'}",
-        f"種別: {sr.get('property_type') or '-'}",
-        val_line,
-        "",
-        f"送信日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        f"お名前: {fields.get('contact_name') or fields.get('name') or '-'}",
+        f"電話番号: {fields.get('contact_phone') or fields.get('phone') or '-'}",
+        f"メール: {fields.get('contact_email') or fields.get('email') or '-'}",
+        f"住所: {fields.get('address') or '-'}",
+        f"種別: {fields.get('property_type') or fields.get('ptype_jp') or '-'}",
+        f"土地: {land_m2 or 0}㎡ / 建物: {bldg_m2 or 0}㎡ / 専有: {excl_m2 or 0}㎡",
+        f"築年数: {age or 0}年",
     ]
+    if val_line:
+        lines.append(val_line)
+    note = (fields.get("note") or "").strip()
+    if note:
+        lines.extend(["", f"ご要望・備考: {note}"])
+    lines.extend(["", f"送信日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
     return {"text": "\n".join(lines)}
+
+
+def _is_staff_request_query() -> bool:
+    return (_query_param_first("staff") or "").strip().lower() in ("1", "true", "yes")
+
+
+def parse_url_staff_request_bundle_if_present() -> Optional[Tuple[str, Dict[str, Any]]]:
+    """form_staff.html 等からの担当者査定申込。対象なら (signature, fields) を返す。"""
+    if not _is_staff_request_query():
+        return None
+    pt_raw = _query_param_first("ptype")
+    addr = (_query_param_first("address") or "").strip()
+    name = (_query_param_first("name") or "").strip()
+    phone = (_query_param_first("phone") or "").strip()
+    email = (_query_param_first("email") or "").strip()
+    if not pt_raw or not addr or not name or not phone or not email:
+        return None
+    ptype_jp = _map_query_ptype_to_property_type(pt_raw)
+    if ptype_jp is None:
+        logger.warning("[staff_req] Unknown ptype=%s", pt_raw)
+        return None
+    lm = _parse_query_float(_query_param_first("land_m2"))
+    bm = _parse_query_float(_query_param_first("bldg_m2"))
+    ex = _parse_query_float(_query_param_first("excl_m2"))
+    try:
+        age_v = int(float(str(_query_param_first("age") or "0").strip()))
+        age_v = max(0, min(100, age_v))
+    except (TypeError, ValueError):
+        age_v = 0
+    note = (_query_param_first("note") or "").strip()
+    sig = "staff|" + _url_auto_signature(
+        pt_raw.strip(), addr, name, phone, email, str(lm), str(bm), str(ex), str(age_v)
+    )
+    if note:
+        sig += "|" + hashlib.sha256(note.encode("utf-8")).hexdigest()[:12]
+    fields = {
+        "ptype_jp": ptype_jp,
+        "address": addr,
+        "contact_name": name,
+        "contact_phone": phone,
+        "contact_email": email,
+        "land_area_input": lm,
+        "building_area_input": bm,
+        "exclusive_area_input": ex,
+        "building_age": age_v,
+        "note": note,
+    }
+    return sig, fields
+
+
+def render_staff_request_thank_you(fields: Dict[str, Any], result: Dict[str, Any]) -> None:
+    """担当者査定フォーム送信後の完了画面。"""
+    status = result.get("status")
+    ptype = fields.get("ptype_jp", "")
+    addr = html.escape(fields.get("address", ""))
+    name = html.escape(fields.get("contact_name", ""))
+    if status == "ok":
+        st.success("担当者査定のお申し込みを受け付けました。")
+        lead = "担当者より折り返しご連絡いたします。"
+    else:
+        st.error("お申し込みの送信に失敗しました。お手数ですが、お電話にてお問い合わせください。")
+        lead = "TEL: 0166-48-2349（平日 9:00〜17:00）"
+    st.markdown(
+        f"""
+<div style="background:#fff;border:1.5px solid #c5d8ee;border-radius:12px;padding:20px 22px;margin:12px 0 20px 0;">
+  <div style="font-weight:700;color:#1a3a6b;font-size:17px;margin-bottom:12px;">📋 お申し込み内容</div>
+  <table style="width:100%;border-collapse:collapse;font-size:15px;">
+    <tr><td style="padding:6px 8px;color:#666;width:35%;">お名前</td><td style="padding:6px 8px;font-weight:600;color:#1a3a6b;">{html.escape(name)} 様</td></tr>
+    <tr style="background:#f8faff;"><td style="padding:6px 8px;color:#666;">物件種別</td><td style="padding:6px 8px;font-weight:600;color:#1a3a6b;">{html.escape(ptype)}</td></tr>
+    <tr><td style="padding:6px 8px;color:#666;">住所</td><td style="padding:6px 8px;font-weight:600;color:#1a3a6b;">{addr}</td></tr>
+  </table>
+  <p style="margin:14px 0 0 0;color:#555;font-size:14px;line-height:1.7;">{html.escape(lead)}</p>
+  <p style="margin:8px 0 0 0;color:#888;font-size:13px;">{html.escape(FOLLOWUP_NOTICE)}</p>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
 
 
 def _mark_url_auto_valuation_processed() -> None:
@@ -2234,8 +2337,16 @@ def _init_from_query_params():
             val = params.get(k, "")
             if val: st.session_state[f"_qp_{k}"] = val
         st.session_state["_params_loaded"] = True
-        # form.htmlから来た場合（address + nameがある）は自動査定フラグをセット
-        if params.get("address", "") and params.get("name", ""):
+        staff_mode = False
+        try:
+            staff_raw = params.get("staff", "")
+            if isinstance(staff_raw, (list, tuple)):
+                staff_raw = staff_raw[0] if staff_raw else ""
+            staff_mode = str(staff_raw).strip().lower() in ("1", "true", "yes")
+        except Exception:
+            staff_mode = False
+        # form.htmlから来た場合（address + nameがある）は自動査定フラグをセット（担当者査定は除外）
+        if params.get("address", "") and params.get("name", "") and not staff_mode:
             st.session_state["_auto_run_satei"] = True
     except Exception:
         pass
@@ -2316,6 +2427,24 @@ with st.sidebar:
             else:
                 st.sidebar.error(f"❌ 送信失敗: {_err}")
     # ─────────────────────────────────────────────────────
+
+if (staff_bundle := parse_url_staff_request_bundle_if_present()) is not None:
+    _staff_sig, _staff_fields = staff_bundle
+    _staff_state = st.session_state.setdefault("_staff_req_state", {})
+    if _staff_sig not in _staff_state:
+        _ok_staff, _err_staff = send_inquiry_to_webhook(_build_staff_request_chat_body(_staff_fields))
+        _staff_state[_staff_sig] = {"status": "ok" if _ok_staff else "fail", "err": _err_staff}
+        if _ok_staff:
+            logger.info("[staff_req] Notification sent OK")
+        else:
+            logger.warning("[staff_req] Notification failed: %s", _err_staff)
+    st.markdown("### 📞 担当者査定のお申し込み")
+    render_staff_request_thank_you(_staff_fields, _staff_state[_staff_sig])
+    st.markdown(
+        '<p style="text-align:center;margin-top:24px;"><a href="https://www.kyouei-asahikawa.com/" style="color:#1a5fa8;font-weight:700;text-decoration:none;">← 杏栄ホームページへ戻る</a></p>',
+        unsafe_allow_html=True,
+    )
+    st.stop()
 
 character_path = Path(__file__).parent / "assets" / "Copilot_20260324_100708.png"
 
@@ -2723,7 +2852,7 @@ if submitted:
         st.code(traceback.format_exc())
 
 # GET クエリからの自動査定（チャット通知は `_run_valuation_pipeline` で実行）。`elif` 連鎖にしないことで CSV 読込待ちでも下の結果表示に到達できる。
-if not submitted and (url_auto_bundle := parse_url_auto_valuation_bundle_if_present()) is not None:
+if not submitted and not _is_staff_request_query() and (url_auto_bundle := parse_url_auto_valuation_bundle_if_present()) is not None:
     ua_sig, ua_fields = url_auto_bundle
     ua_state = st.session_state.setdefault("_url_auto_val_state", {})
     if ua_sig not in ua_state:
