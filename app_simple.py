@@ -2254,7 +2254,7 @@ div[data-testid="stTextInput"] { display: none !important; }
 div[data-testid="stCheckbox"] { display: none !important; }
 div[data-testid="stExpander"] { display: none !important; }
 [data-testid="stFormSubmitButton"] { display: none !important; }
-.stButton > button { display: none !important; }
+div[data-testid="stForm"] .stButton > button { display: none !important; }
 div[data-testid="stForm"] { border: none !important; padding: 0 !important; }
 /* ヒーローバナーを非表示 */
 div[data-testid="stMarkdownContainer"] > div > div[style*="linear-gradient"] { display: none !important; }
