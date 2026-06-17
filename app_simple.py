@@ -191,9 +191,9 @@ LAND_MARKUP_RATE = 1.20
 LAND_UNDERPRICE_VS_MEAN_YEN = 2_000_000
 FOLLOWUP_NOTICE = "後日、弊社担当者からご連絡を差し上げる場合があります。ご了承ください。"
 
-# 査定完了時の Google Chat 自動通知（一時停止中。復旧時は True に変更）
-# 「担当者査定はこちら」ボタンからの手動通知は WEBHOOK_URL が設定されていれば常に送信されます。
-WEBHOOK_AUTO_NOTIFY_ENABLED = False
+# 査定完了時の Google Chat 自動通知
+# 「担当者査定はこちら」ボタン・form_staff.html からの手動通知も WEBHOOK_URL 設定時に送信されます。
+WEBHOOK_AUTO_NOTIFY_ENABLED = True
 
 def _normalize_webhook_url(raw: Optional[str]) -> str:
     """
