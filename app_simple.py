@@ -189,9 +189,11 @@ MAX_REFERENCE_CASES = 20
 M2_TO_TSUBO = 3.30578
 LAND_MARKUP_RATE = 1.20
 LAND_UNDERPRICE_VS_MEAN_YEN = 2_000_000
+FOLLOWUP_NOTICE = "後日、弊社担当者からご連絡を差し上げる場合があります。ご了承ください。"
 
-# 査定結果の Google Chat 送信（一時停止中。復旧時は True に変更）
-WEBHOOK_SEND_ENABLED = False
+# 査定完了時の Google Chat 自動通知（一時停止中。復旧時は True に変更）
+# 「担当者査定はこちら」ボタンからの手動通知は WEBHOOK_URL が設定されていれば常に送信されます。
+WEBHOOK_AUTO_NOTIFY_ENABLED = False
 
 def _normalize_webhook_url(raw: Optional[str]) -> str:
     """
@@ -212,10 +214,8 @@ def _get_webhook_url() -> Tuple[Optional[str], str]:
     """
     Google Chat Incoming Webhook の URL。
     非空の環境変数 WEBHOOK_URL を最優先（Cloud Run 等で secrets と食い違うと通知が別 URL になるのを防ぐ）。
-    戻り値: (url or None, "env" | "st.secrets" | "none" | "disabled")
+    戻り値: (url or None, "env" | "st.secrets" | "none")
     """
-    if not WEBHOOK_SEND_ENABLED:
-        return None, "disabled"
     env_u = _normalize_webhook_url(os.environ.get("WEBHOOK_URL"))
     if env_u:
         return env_u, "env"
@@ -277,6 +277,33 @@ def _build_ai_notify_chat_body(
             lines.append(f"建物ボリュームゾーン: {building_volume_zone_caption}")
     lines += ["", f"送信日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"]
     return {"text": "\n".join(lines)}
+
+
+def _build_staff_valuation_request_body(sr: Dict[str, Any]) -> Dict[str, str]:
+    """担当者査定希望ボタン用の Chat ペイロード。"""
+    valuation = sr.get("valuation")
+    val_line = f"仮査定金額: {valuation / 10000:,.0f}万円" if valuation else "仮査定金額: -"
+    lines = [
+        "担当者査定希望",
+        "",
+        f"お名前: {sr.get('contact_name') or '-'}",
+        f"電話番号: {sr.get('contact_phone') or '-'}",
+        f"メール: {sr.get('contact_email') or '-'}",
+        f"住所: {sr.get('address') or '-'}",
+        f"種別: {sr.get('property_type') or '-'}",
+        val_line,
+        "",
+        f"送信日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+    ]
+    return {"text": "\n".join(lines)}
+
+
+def _mark_url_auto_valuation_processed() -> None:
+    """GET 自動査定とフォーム査定の二重実行を防ぐため、処理済み署名を記録する。"""
+    bundle = parse_url_auto_valuation_bundle_if_present()
+    if bundle is not None:
+        sig, _ = bundle
+        st.session_state.setdefault("_url_auto_val_state", {})[sig] = "ok"
 
 
 def send_inquiry_to_webhook(body: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
@@ -580,7 +607,7 @@ def _run_valuation_pipeline(
         if property_type in ("中古住宅（戸建て）", "中古マンション") and building_age_val:
             building_volume_zone_caption = format_building_volume_zone_caption(building_age_val)
 
-        if WEBHOOK_SEND_ENABLED:
+        if WEBHOOK_AUTO_NOTIFY_ENABLED:
             status_text.info("✉️ Google Chat に通知送信中...")
             webhook_body = _build_ai_notify_chat_body(
                 ptype_display=property_type,
@@ -634,8 +661,13 @@ def _run_valuation_pipeline(
             "price_chart": price_chart,
             "land_volume_zone_caption": land_volume_zone_caption,
             "building_volume_zone_caption": building_volume_zone_caption,
+            "contact_name": (contact_name or "").strip(),
+            "contact_phone": (contact_phone or "").strip(),
+            "contact_email": (contact_email or "").strip(),
+            "staff_request_sent": False,
         }
         st.session_state.search_result = res_data
+        _mark_url_auto_valuation_processed()
 
         logger.info("[perf] total pipeline: %.3fs", _time.perf_counter() - _t_start)
         status_text.success("✅ 査定が完了しました！結果を表示します。")
@@ -1997,6 +2029,8 @@ def _generate_valuation_pdf_minimal(address, property_type, valuation, building_
     elements.append(Paragraph(f"住所: {address}", b_style))
     elements.append(Paragraph(f"種別: {property_type}", b_style))
     elements.append(Paragraph(f"査定額: {valuation/10000:,.0f} 万円", val_style))
+    elements.append(Spacer(1, 6))
+    elements.append(Paragraph(FOLLOWUP_NOTICE, s_style))
     doc.build(elements)
     buf.seek(0)
     return buf.read()
@@ -2039,6 +2073,8 @@ def _generate_valuation_pdf_impl(address, property_type, area_input, building_ag
     val_man = valuation / 10000
     val_style = ParagraphStyle(name="Val", fontName=font_name, fontSize=18, textColor=colors.HexColor("#1a5276"), alignment=0, leftIndent=0, rightIndent=0, spaceBefore=4, spaceAfter=8)
     left_cell_contents = [Paragraph("■ 査定結果", heading_style), Paragraph(f"査定額：{val_man:,.0f} 万円", val_style)]
+    left_cell_contents.append(Spacer(1, 4))
+    left_cell_contents.append(Paragraph(FOLLOWUP_NOTICE, small_style))
     zone_cap = (kwargs.get("land_volume_zone_caption") or "").strip()
     if zone_cap:
         from xml.sax.saxutils import escape as _xml_escape
@@ -2261,14 +2297,14 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### 🔔 Chat通知の確認")
     _wh_url, _wh_src = _get_webhook_url()
-    if not WEBHOOK_SEND_ENABLED:
-        st.info("Chat通知: ⏸ 一時停止中（`WEBHOOK_SEND_ENABLED = False`）")
-    elif _wh_url:
-        st.success(f"URL設定: ✅ あり（{_wh_src}）")
+    if not WEBHOOK_AUTO_NOTIFY_ENABLED:
+        st.info("査定完了時の自動通知: ⏸ 一時停止中（`WEBHOOK_AUTO_NOTIFY_ENABLED = False`）")
+    if _wh_url:
+        st.success(f"Webhook URL: ✅ あり（{_wh_src}）")
     else:
-        st.error("URL設定: ❌ なし\n\n`WEBHOOK_URL` を Streamlit Cloud の Secrets または環境変数に設定してください。")
+        st.error("Webhook URL: ❌ なし\n\n`WEBHOOK_URL` を Streamlit Cloud の Secrets または環境変数に設定してください。")
 
-    if st.button("📨 テスト通知を送信", disabled=not WEBHOOK_SEND_ENABLED):
+    if st.button("📨 テスト通知を送信", disabled=not _wh_url):
         if not _wh_url:
             st.sidebar.error("WEBHOOK_URL が未設定です。")
         else:
@@ -2296,6 +2332,10 @@ def render_valuation_result(sr, is_previous=False):
     st.markdown(title_prefix)
     valuation = sr["valuation"]
     st.markdown(f'<p style="font-size: 2.5rem; font-weight: bold; color: #1f77b4;">仮査定金額：<span style="font-size: 3rem;">{valuation/10000:,.0f}</span> 万円</p>', unsafe_allow_html=True)
+    st.markdown(
+        f'<p style="font-size: 0.95rem; color: #666; margin-top: 0.5rem; margin-bottom: 0.75rem;">{html.escape(FOLLOWUP_NOTICE)}</p>',
+        unsafe_allow_html=True,
+    )
     lzc = sr.get("land_volume_zone_caption")
     if lzc:
         st.markdown(f'<p style="font-size: 1rem; color: #555; margin-top: 0.25rem;">（{html.escape(str(lzc))}）</p>', unsafe_allow_html=True)
@@ -2337,8 +2377,41 @@ def render_valuation_result(sr, is_previous=False):
                     st.session_state.search_result["pdf_bytes"] = pdf_bytes
             except Exception as _pdf_e:
                 logger.exception("[pdf_lazy] error: %s", _pdf_e)
-    if pdf_bytes:
-        st.download_button(label="📄 査定書をPDFでダウンロード", data=pdf_bytes, file_name=f"査定報告書_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf", mime="application/pdf", type="primary", key="pdf_download_prev" if is_previous else "pdf_download")
+    pdf_col, staff_col = st.columns(2)
+    with pdf_col:
+        if pdf_bytes:
+            st.download_button(
+                label="📄 査定書をPDFでダウンロード",
+                data=pdf_bytes,
+                file_name=f"査定報告書_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                mime="application/pdf",
+                type="primary",
+                use_container_width=True,
+                key="pdf_download_prev" if is_previous else "pdf_download",
+            )
+    with staff_col:
+        staff_key = "staff_request_sent_prev" if is_previous else "staff_request_sent"
+        if sr.get("staff_request_sent"):
+            st.success("✅ 担当者査定のご希望を送信しました。担当者よりご連絡いたします。")
+        else:
+            if st.button(
+                "📞 担当者査定はこちら",
+                use_container_width=True,
+                key="staff_request_btn_prev" if is_previous else "staff_request_btn",
+            ):
+                _wh_url, _ = _get_webhook_url()
+                if not _wh_url:
+                    st.error("通知の送信に失敗しました。しばらくしてから再度お試しください。")
+                else:
+                    ok_staff, err_staff = send_inquiry_to_webhook(_build_staff_valuation_request_body(sr))
+                    if ok_staff:
+                        sr["staff_request_sent"] = True
+                        if st.session_state.get("search_result") is not None:
+                            st.session_state.search_result["staff_request_sent"] = True
+                        st.session_state[staff_key] = True
+                        st.rerun()
+                    else:
+                        st.error(f"送信に失敗しました。{err_staff or 'しばらくしてから再度お試しください。'}")
     avg_unit_price = sr["avg_unit_price"]
     correction = sr["correction"]
     adjusted_unit_price = sr["adjusted_unit_price"]
